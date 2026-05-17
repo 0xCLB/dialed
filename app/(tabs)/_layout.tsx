@@ -1,59 +1,123 @@
-import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Redirect, Tabs } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { Camera, CircleUserRound, Home, ListPlus, Trophy } from 'lucide-react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
-
-// You can explore the built-in icon families and icons on the web at https://icons.expo.fyi/
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
-}) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
-}
+import { theme } from '@/components/ui/theme';
+import { useAuthStore } from '@/features/auth/auth-store';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const session = useAuthStore((state) => state.session);
+  const profile = useAuthStore((state) => state.profile);
+  const loading = useAuthStore((state) => state.loading);
+
+  if (!loading && !session) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  if (!loading && session && (!profile || !profile.onboardingComplete)) {
+    return <Redirect href="/(auth)/onboarding" />;
+  }
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
+        headerShown: false,
+        tabBarActiveTintColor: theme.colors.ink,
+        tabBarInactiveTintColor: theme.colors.faint,
+        tabBarStyle: {
+          backgroundColor: theme.colors.surface,
+          borderTopColor: theme.colors.border,
+          minHeight: 86,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '700',
+        },
+        tabBarButton: (props: any) => {
+          const { children, onPress, ref: _ref, ...buttonProps } = props;
+          return (
+            <Pressable
+              {...buttonProps}
+              onPress={(event) => {
+                Haptics.selectionAsync();
+                onPress?.(event);
+              }}>
+              {children}
+            </Pressable>
+          );
+        },
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable>
-                {({ pressed }) => (
-                  <FontAwesome
-                    name="info-circle"
-                    size={25}
-                    color={Colors[colorScheme ?? 'light'].text}
-                    style={{ marginRight: 15, opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
+          title: 'Home',
+          tabBarIcon: ({ color }) => <Home size={23} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="check-in"
         options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => <TabBarIcon name="code" color={color} />,
+          title: 'Check-In',
+          tabBarIcon: ({ color }) => <ListPlus size={23} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="capture"
+        options={{
+          title: 'Capture',
+          tabBarIcon: ({ focused }) => (
+            <View style={[styles.captureButton, focused && styles.captureButtonFocused]}>
+              <Camera size={28} color={theme.colors.white} />
+            </View>
+          ),
+          tabBarItemStyle: styles.captureItem,
+          tabBarLabelStyle: styles.captureLabel,
+        }}
+      />
+      <Tabs.Screen
+        name="leaderboard"
+        options={{
+          title: 'Leaderboard',
+          tabBarIcon: ({ color }) => <Trophy size={23} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color }) => <CircleUserRound size={23} color={color} />,
         }}
       />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  captureItem: {
+    transform: [{ translateY: -16 }],
+  },
+  captureButton: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.primary,
+    shadowColor: theme.colors.primaryDark,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.24,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  captureButtonFocused: {
+    backgroundColor: theme.colors.primaryDark,
+  },
+  captureLabel: {
+    marginTop: 18,
+    fontSize: 11,
+    fontWeight: '800',
+    color: theme.colors.primary,
+  },
+});
