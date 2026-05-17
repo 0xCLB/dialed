@@ -11,9 +11,17 @@ type RevenueCatEvent = {
   expiration_at_ms?: number | string | null;
 };
 
-type RevenueCatPayload = {
+type RevenueCatWebhookPayload = {
   event?: RevenueCatEvent;
   [key: string]: unknown;
+};
+
+type SyncRevenueCatOutput = {
+  user_id: string;
+  revenuecat_customer_id: string;
+  entitlement: string;
+  status: string;
+  current_period_end: string | null;
 };
 
 const json = (body: unknown, status = 200) =>
@@ -29,7 +37,11 @@ function isUuid(value: unknown): value is string {
   );
 }
 
-function resolveUserId(event: RevenueCatEvent): string | null {
+function eventFromPayload(payload: RevenueCatWebhookPayload): RevenueCatEvent {
+  return (payload.event ?? payload) as RevenueCatEvent;
+}
+
+function resolveSupabaseUserId(event: RevenueCatEvent): string | null {
   const candidates = [
     event.app_user_id,
     event.original_app_user_id,
@@ -39,8 +51,9 @@ function resolveUserId(event: RevenueCatEvent): string | null {
   return candidates.find(isUuid) ?? null;
 }
 
-function statusFromEvent(type?: string): string {
-  return type && ['EXPIRATION', 'CANCELLATION', 'BILLING_ISSUE', 'PRODUCT_CHANGE'].includes(type)
+function subscriptionStatus(eventType?: string): string {
+  if (!eventType) return 'active';
+  return ['EXPIRATION', 'CANCELLATION', 'BILLING_ISSUE', 'PRODUCT_CHANGE'].includes(eventType)
     ? 'inactive'
     : 'active';
 }
@@ -55,19 +68,19 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     if (!supabaseUrl || !serviceRoleKey) {
-      return json({ error: 'revenuecat-webhook is not configured.' }, 500);
+      return json({ error: 'sync-revenuecat-webhook is not configured.' }, 500);
     }
 
-    const payload = (await req.json()) as RevenueCatPayload;
-    const event = (payload.event ?? payload) as RevenueCatEvent;
-    const userId = resolveUserId(event);
+    const payload = (await req.json()) as RevenueCatWebhookPayload;
+    const event = eventFromPayload(payload);
+    const userId = resolveSupabaseUserId(event);
     if (!userId) {
       return json({ error: 'Could not map RevenueCat customer to a Supabase user UUID.' }, 400);
     }
 
     const revenuecatCustomerId = event.app_user_id ?? event.original_app_user_id ?? userId;
     const entitlement = event.entitlement_id ?? event.product_id ?? 'dialed_pro';
-    const status = statusFromEvent(event.type);
+    const status = subscriptionStatus(event.type);
     const currentPeriodEnd = event.expiration_at_ms
       ? new Date(Number(event.expiration_at_ms)).toISOString()
       : null;
@@ -85,20 +98,24 @@ Deno.serve(async (req) => {
 
     const { error: profileError } = await serviceClient
       .from('profiles')
-      .update({ is_pro: status === 'active', updated_at: new Date().toISOString() })
+      .update({
+        is_pro: status === 'active',
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', userId);
     if (profileError) throw profileError;
 
-    // TODO: Prefer sync-revenuecat-webhook for new deploys; this path remains as
-    // a compatibility wrapper for older webhook configuration.
-    return json({
+    // TODO: Persist the raw webhook payload to an audit table once subscription_events exists.
+    const output: SyncRevenueCatOutput = {
       user_id: userId,
       revenuecat_customer_id: revenuecatCustomerId,
       entitlement,
       status,
       current_period_end: currentPeriodEnd,
-    });
+    };
+
+    return json(output);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : 'revenuecat-webhook failed.' }, 400);
+    return json({ error: error instanceof Error ? error.message : 'sync-revenuecat-webhook failed.' }, 400);
   }
 });

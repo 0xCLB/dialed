@@ -73,6 +73,102 @@ create table if not exists public.streaks (
   updated_at timestamptz default now()
 );
 
+create table if not exists public.friendships (
+  id uuid primary key default gen_random_uuid(),
+  requester_id uuid references public.profiles(id) on delete cascade,
+  addressee_id uuid references public.profiles(id) on delete cascade,
+  status text default 'pending' check (status in ('pending', 'accepted', 'blocked')),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique (requester_id, addressee_id)
+);
+
+create table if not exists public.reactions (
+  id uuid primary key default gen_random_uuid(),
+  entry_id uuid references public.entries(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
+  type text check (type in ('fire', 'dialed', 'respect', 'slippin', 'water', 'check')),
+  created_at timestamptz default now(),
+  unique (entry_id, user_id, type)
+);
+
+create table if not exists public.comments (
+  id uuid primary key default gen_random_uuid(),
+  entry_id uuid references public.entries(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists public.challenges (
+  id uuid primary key default gen_random_uuid(),
+  creator_id uuid references public.profiles(id) on delete set null,
+  title text not null,
+  description text,
+  challenge_type text,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  visibility text default 'friends',
+  entry_rules jsonb default '{}'::jsonb,
+  scoring_rules jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.challenge_members (
+  challenge_id uuid references public.challenges(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete cascade,
+  status text default 'active',
+  joined_at timestamptz default now(),
+  primary key (challenge_id, user_id)
+);
+
+create table if not exists public.health_samples (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade,
+  source text check (source in ('apple_health', 'whoop', 'oura', 'garmin', 'strava', 'manual')),
+  metric_type text check (metric_type in ('steps', 'workout', 'sleep', 'hr', 'hrv', 'calories', 'mindfulness')),
+  value numeric,
+  unit text,
+  started_at timestamptz,
+  ended_at timestamptz,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.daily_digests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade,
+  digest_date date,
+  title text,
+  body text,
+  insights jsonb default '{}'::jsonb,
+  score_summary jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  unique (user_id, digest_date)
+);
+
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade,
+  actor_id uuid references public.profiles(id) on delete set null,
+  type text,
+  title text,
+  body text,
+  data jsonb default '{}'::jsonb,
+  read_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.subscriptions (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  revenuecat_customer_id text,
+  entitlement text,
+  status text,
+  current_period_end timestamptz,
+  updated_at timestamptz default now()
+);
+
 create index if not exists profiles_username_idx
   on public.profiles (username);
 
@@ -90,3 +186,21 @@ create index if not exists daily_scores_user_score_date_idx
 
 create index if not exists daily_scores_score_date_total_points_idx
   on public.daily_scores (score_date, total_points);
+
+create index if not exists friendships_requester_status_idx
+  on public.friendships (requester_id, status);
+
+create index if not exists friendships_addressee_status_idx
+  on public.friendships (addressee_id, status);
+
+create index if not exists reactions_entry_id_idx
+  on public.reactions (entry_id);
+
+create index if not exists comments_entry_id_idx
+  on public.comments (entry_id);
+
+create index if not exists health_samples_user_started_at_idx
+  on public.health_samples (user_id, started_at);
+
+create index if not exists notifications_user_read_at_idx
+  on public.notifications (user_id, read_at);
