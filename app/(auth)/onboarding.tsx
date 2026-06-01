@@ -74,7 +74,7 @@ export default function OnboardingScreen() {
   return (
     <Screen>
       <Text variant="title">Set your health stack</Text>
-      <Text muted>Create the profile row that powers phone auth, privacy, points, and social competition.</Text>
+      <Text muted>Create the profile row that powers privacy, points, and social competition.</Text>
       <Card style={styles.form}>
         <TextInputField label="Display name" value={displayName} onChangeText={setDisplayName} />
         <TextInputField

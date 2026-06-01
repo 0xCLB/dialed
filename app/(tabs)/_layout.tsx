@@ -10,12 +10,17 @@ export default function TabLayout() {
   const session = useAuthStore((state) => state.session);
   const profile = useAuthStore((state) => state.profile);
   const loading = useAuthStore((state) => state.loading);
+  const initialized = useAuthStore((state) => state.initialized);
 
-  if (!loading && !session) {
+  if (!initialized || loading) {
+    return null;
+  }
+
+  if (!session) {
     return <Redirect href="/(auth)/login" />;
   }
 
-  if (!loading && session && (!profile || !profile.onboardingComplete)) {
+  if (!profile || !profile.onboardingComplete) {
     return <Redirect href="/(auth)/onboarding" />;
   }
 

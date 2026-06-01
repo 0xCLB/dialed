@@ -66,7 +66,8 @@ docs/
 - Run approved schema SQL.
 - Create storage buckets.
 - Run approved RLS and storage policies.
-- Enable Phone Auth.
+- Enable Email Auth for development/staging.
+- Add Apple Sign-In and Phone Auth later for production.
 - Add Twilio later for production SMS.
 - Configure environment variables.
 
@@ -79,14 +80,14 @@ docs/
 - Environment validation.
 - Navigation and loading states.
 
-### Sprint 4: Phone OTP Auth
+### Sprint 4: Development Auth
 
-- Phone number entry.
-- OTP send and resend.
-- OTP verification.
+- Email/password sign-up.
+- Email/password sign-in.
 - Session persistence.
 - Logout and expired-session handling.
 - Auth error and rate-limit states.
+- Phone OTP and Apple Sign-In placeholder stubs.
 
 ### Sprint 5: Onboarding And Profile
 
@@ -197,22 +198,26 @@ docs/
 9. Review `supabase/storage-policies.sql`.
 10. Run `supabase/storage-policies.sql`.
 11. Review and optionally run `supabase/seed.sql`.
-12. Enable Phone Auth.
-13. Later configure Twilio for production SMS delivery.
-14. Configure Edge Function secrets.
-15. Deploy edge functions after local and SQL review.
+12. Enable Email Auth.
+13. For local development only, email confirmation may be disabled to unblock immediate sign-up/onboarding tests.
+14. Later enable Apple Sign-In and Phone Auth for production.
+15. Later configure Twilio for production SMS delivery.
+16. Configure Edge Function secrets.
+17. Deploy edge functions after local and SQL review.
 
 ## Auth Flow
 
-1. User enters phone number.
-2. Client calls Supabase OTP sign-in.
-3. User enters verification code.
-4. Client verifies OTP with Supabase.
-5. App loads or creates profile.
-6. If onboarding is incomplete, user is routed to onboarding.
-7. If onboarding is complete, user enters the main app.
-8. Protected screens require an active Supabase session.
-9. Logout clears local session state and returns to auth screens.
+Auth strategy for development/staging is email/password. Production may add Apple Sign-In and phone OTP later.
+
+1. User signs up or signs in with email/password.
+2. Client calls Supabase password auth through the Expo-native Supabase client.
+3. App restores the persisted Supabase session on reload.
+4. App loads or creates the profile row using the authenticated user id.
+5. If onboarding is incomplete, user is routed to onboarding.
+6. If onboarding is complete, user enters the main app.
+7. Protected screens require an active Supabase session.
+8. Logout clears local session state and returns to auth screens.
+9. Phone OTP remains disabled in dev until Twilio is ready.
 
 ## Database Flow
 
@@ -253,7 +258,8 @@ docs/
 ## App Screen List
 
 - Login
-- OTP verification
+- Sign-up
+- Phone OTP placeholder
 - Onboarding
 - Home / My Day
 - Capture
@@ -278,8 +284,10 @@ docs/
 - TypeScript typecheck passes.
 - Expo config resolves.
 - Environment validation fails clearly when required values are missing.
-- Phone OTP happy path works.
-- OTP resend, invalid code, and expired code states work.
+- Email/password sign-up works.
+- Email/password sign-in works.
+- Persisted session survives app reloads.
+- Phone OTP route clearly explains that Twilio is deferred.
 - Onboarding creates exactly one profile per user.
 - Private entries are hidden from feeds and friend views.
 - Friends-only entries are visible only to accepted friends.
@@ -304,8 +312,9 @@ docs/
 - SQL reviewed and applied in the correct order.
 - Supabase tables, indexes, constraints, and RLS policies verified.
 - Storage buckets and policies verified.
-- Phone Auth enabled.
-- Twilio configured for production SMS.
+- Email Auth enabled for development/staging.
+- Apple Sign-In enabled before App Store launch.
+- Phone Auth and Twilio configured before production SMS launch.
 - Edge Function secrets configured.
 - Edge Functions deployed and smoke-tested.
 - App environment variables configured for development and production.

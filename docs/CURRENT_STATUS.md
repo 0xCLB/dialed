@@ -19,7 +19,8 @@
   - Protected tab route group.
   - UI primitives.
   - Supabase client setup.
-  - Phone OTP auth screens.
+  - Email/password dev auth screens.
+  - Phone OTP and Apple Sign-In future stubs.
   - Onboarding screen.
   - Basic protected tabs for home, capture, check-in, leaderboard, and profile.
 - Entry Engine v1 exists:
@@ -98,6 +99,9 @@
 ## What Is Missing
 
 - Local `.env` is not committed and must be created manually from `.env.example`.
+- Active development/staging auth is email/password through Supabase Auth.
+- Supabase Email provider must be enabled. Email confirmation may be disabled for local development only to let sign-up immediately create the authenticated profile row.
+- Phone OTP is deferred until Twilio is ready. Apple Sign-In remains planned before App Store launch.
 - Supabase Storage buckets still need privileged confirmation or creation:
   - `entry-photos`
   - `share-assets`
