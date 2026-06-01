@@ -1,25 +1,25 @@
 # Storage Buckets
 
-These notes are for local and production Supabase setup. Keep buckets private by default unless a
-product path intentionally needs public distribution.
+These notes are for local and production Supabase setup. Keep proof and generated media private by
+default, then grant access through RLS-backed storage policies or short-lived signed URLs.
 
 ## Buckets
 
 | Bucket | Purpose | Expected path | Public |
 | --- | --- | --- | --- |
-| `entry-photos` | Original user photo proof uploads. | `entry-photos/{user_id}/{entry_id}.jpg` | No |
-| `share-assets` | Generated share cards, leaderboard cards, and reel exports. | `share-assets/{user_id}/{asset_id}.png` | No by default |
-| `avatars` | User profile avatars. | `avatars/{user_id}/avatar.jpg` | Yes |
+| `entry-photos` | Original user proof uploads and thumbnails. | `entry-photos/{user_id}/{entry_id}/{media_id}.{jpg|jpeg|png|heic|webp}` | No |
+| `share-assets` | Generated story cards, leaderboard cards, digest cards, and reels. | `share-assets/{user_id}/{asset_id}.{png|jpg|jpeg|mp4}` | No |
+| `avatars` | User profile avatars. | `avatars/{user_id}/avatar.{jpg|jpeg|png|webp}` | Yes |
 
 ## Bucket Setup SQL
 
-Run this after the Supabase project has the Storage schema available.
+Run this after creating the Supabase project and before applying `supabase/storage-policies.sql`.
 
 ```sql
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values
-  ('entry-photos', 'entry-photos', false, 10485760, array['image/jpeg', 'image/png', 'image/heic']),
-  ('share-assets', 'share-assets', false, 10485760, array['image/png', 'image/jpeg', 'video/mp4']),
+  ('entry-photos', 'entry-photos', false, 10485760, array['image/jpeg', 'image/png', 'image/heic', 'image/webp']),
+  ('share-assets', 'share-assets', false, 52428800, array['image/png', 'image/jpeg', 'video/mp4']),
   ('avatars', 'avatars', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set
   public = excluded.public,
@@ -27,76 +27,29 @@ on conflict (id) do update set
   allowed_mime_types = excluded.allowed_mime_types;
 ```
 
-## Policy Setup SQL
+## Policy Files
 
-The first path segment must be the authenticated user's UUID. This enforces own-folder writes and
-own-file reads for private buckets.
+Apply files in this order:
 
-```sql
-create policy "Users upload their own entry photos"
-on storage.objects for insert to authenticated
-with check (
-  bucket_id = 'entry-photos'
-  and auth.uid()::text = (storage.foldername(name))[1]
-);
+1. `supabase/schema.sql`
+2. `supabase/policies.sql`
+3. Bucket setup SQL above
+4. `supabase/storage-policies.sql`
+5. Optional dev-only `supabase/seed.sql`
 
-create policy "Users read their own entry photos"
-on storage.objects for select to authenticated
-using (
-  bucket_id = 'entry-photos'
-  and auth.uid()::text = (storage.foldername(name))[1]
-);
+## Access Model
 
-create policy "Users upload their own share assets"
-on storage.objects for insert to authenticated
-with check (
-  bucket_id = 'share-assets'
-  and auth.uid()::text = (storage.foldername(name))[1]
-);
+- `entry-photos` writes are constrained to the authenticated user's folder.
+- Non-owner `entry-photos` reads are allowed only when `public.can_view_entry(auth.uid(), entry_id)` passes through the matching `entry_media` row.
+- `share-assets` writes are constrained to the authenticated user's folder.
+- Public `share-assets` reads require a matching `share_assets` row with `visibility = 'public'` and `status = 'ready'`.
+- `avatars` are publicly readable so social profile cards can render without issuing signed URLs.
+- Private entries and private share assets should use signed URLs from trusted app flows when direct storage reads are not appropriate.
 
-create policy "Users read their own share assets"
-on storage.objects for select to authenticated
-using (
-  bucket_id = 'share-assets'
-  and auth.uid()::text = (storage.foldername(name))[1]
-);
+## Production Notes
 
-create policy "Users upload their own avatar"
-on storage.objects for insert to authenticated
-with check (
-  bucket_id = 'avatars'
-  and auth.uid()::text = (storage.foldername(name))[1]
-);
-
-create policy "Users update their own avatar"
-on storage.objects for update to authenticated
-using (
-  bucket_id = 'avatars'
-  and auth.uid()::text = (storage.foldername(name))[1]
-)
-with check (
-  bucket_id = 'avatars'
-  and auth.uid()::text = (storage.foldername(name))[1]
-);
-
-create policy "Avatars are publicly readable"
-on storage.objects for select to public
-using (bucket_id = 'avatars');
-```
-
-## Security Notes
-
-- Authenticated users can upload only to their own folder by matching the first path segment to
-  `auth.uid()`.
-- Users can read their own private files in `entry-photos` and `share-assets`.
-- Avatars can be publicly readable because the bucket is configured as public and has a public
-  read policy.
-- Entry photo access must respect `entries.visibility`. Storage policies are a poor fit for the
-  full visibility model because friends and public access require social graph and entry metadata
-  checks.
-- Use signed URLs from a Supabase Edge Function for non-owner entry photo access. The Edge Function
-  should verify entry ownership, friendship status, and `private` / `friends` / `public` visibility
-  before creating a short-lived signed URL.
-- Public share assets may be readable if intentionally generated for sharing. Keep `share-assets`
-  private by default and issue signed URLs, or move explicitly public exports into a separate public
-  path after product review.
+- Use deterministic user-scoped paths so storage policies can enforce ownership without trusting client metadata.
+- Insert the app row (`entry_media` or `share_assets`) after upload succeeds.
+- Delete orphaned storage objects when an entry or share asset is deleted.
+- Keep generated reels in `share-assets`; the bucket accepts `video/mp4` for later reel export.
+- Do not make `entry-photos` public. Proof media visibility must be tied to entry privacy and friendship state.

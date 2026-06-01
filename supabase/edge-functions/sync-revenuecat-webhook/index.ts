@@ -16,14 +16,6 @@ type RevenueCatWebhookPayload = {
   [key: string]: unknown;
 };
 
-type SyncRevenueCatOutput = {
-  user_id: string;
-  revenuecat_customer_id: string;
-  entitlement: string;
-  status: string;
-  current_period_end: string | null;
-};
-
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -43,19 +35,32 @@ function eventFromPayload(payload: RevenueCatWebhookPayload): RevenueCatEvent {
 
 function resolveSupabaseUserId(event: RevenueCatEvent): string | null {
   const candidates = [
+    event.subscriber_attributes?.supabase_user_id?.value,
     event.app_user_id,
     event.original_app_user_id,
     ...(event.aliases ?? []),
-    event.subscriber_attributes?.supabase_user_id?.value,
   ];
   return candidates.find(isUuid) ?? null;
 }
 
 function subscriptionStatus(eventType?: string): string {
-  if (!eventType) return 'active';
-  return ['EXPIRATION', 'CANCELLATION', 'BILLING_ISSUE', 'PRODUCT_CHANGE'].includes(eventType)
-    ? 'inactive'
-    : 'active';
+  switch (eventType) {
+    case 'INITIAL_PURCHASE':
+    case 'RENEWAL':
+    case 'UNCANCELLATION':
+    case 'NON_RENEWING_PURCHASE':
+      return 'active';
+    case 'TRIAL_STARTED':
+      return 'trialing';
+    case 'BILLING_ISSUE':
+      return 'billing_issue';
+    case 'CANCELLATION':
+      return 'cancelled';
+    case 'EXPIRATION':
+      return 'expired';
+    default:
+      return 'active';
+  }
 }
 
 Deno.serve(async (req) => {
@@ -79,18 +84,29 @@ Deno.serve(async (req) => {
     }
 
     const revenuecatCustomerId = event.app_user_id ?? event.original_app_user_id ?? userId;
-    const entitlement = event.entitlement_id ?? event.product_id ?? 'dialed_pro';
+    const entitlement = event.entitlement_id ?? 'dialed_pro';
     const status = subscriptionStatus(event.type);
+    const productId = event.product_id ?? null;
     const currentPeriodEnd = event.expiration_at_ms
       ? new Date(Number(event.expiration_at_ms)).toISOString()
       : null;
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+
+    const { error: eventError } = await serviceClient.from('subscription_events').insert({
+      user_id: userId,
+      revenuecat_customer_id: revenuecatCustomerId,
+      event_type: event.type ?? 'UNKNOWN',
+      payload,
+    });
+    if (eventError) throw eventError;
+
     const { error: subscriptionError } = await serviceClient.from('subscriptions').upsert({
       user_id: userId,
       revenuecat_customer_id: revenuecatCustomerId,
       entitlement,
       status,
+      product_id: productId,
       current_period_end: currentPeriodEnd,
       updated_at: new Date().toISOString(),
     });
@@ -99,22 +115,20 @@ Deno.serve(async (req) => {
     const { error: profileError } = await serviceClient
       .from('profiles')
       .update({
-        is_pro: status === 'active',
+        is_pro: status === 'active' || status === 'trialing',
         updated_at: new Date().toISOString(),
       })
       .eq('id', userId);
     if (profileError) throw profileError;
 
-    // TODO: Persist the raw webhook payload to an audit table once subscription_events exists.
-    const output: SyncRevenueCatOutput = {
+    return json({
       user_id: userId,
       revenuecat_customer_id: revenuecatCustomerId,
       entitlement,
       status,
+      product_id: productId,
       current_period_end: currentPeriodEnd,
-    };
-
-    return json(output);
+    });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'sync-revenuecat-webhook failed.' }, 400);
   }

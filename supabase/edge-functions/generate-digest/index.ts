@@ -1,21 +1,21 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 type GenerateDigestInput = {
-  user_id: string;
+  user_id?: string;
   digest_date: string;
 };
 
-type GenerateDigestOutput = {
-  title: string;
-  body: string;
-  insights: Record<string, unknown>;
-  score_summary: Record<string, unknown>;
+type EntrySummary = {
+  id: string;
+  entry_type: string;
+  activity_tag: string | null;
 };
 
-type EntrySummary = {
-  wellness_pillar: string | null;
-  points: number | null;
-  normalized_activity: string | null;
+type ScoreSummary = {
+  entry_id: string;
+  wellness_pillar: string;
+  points: number;
+  normalized_activity: string;
 };
 
 const corsHeaders = {
@@ -38,7 +38,7 @@ function isUuid(value: unknown): value is string {
 
 function assertPayload(value: unknown): GenerateDigestInput {
   const payload = value as Partial<GenerateDigestInput>;
-  if (!isUuid(payload.user_id)) throw new Error('user_id must be a UUID.');
+  if (payload.user_id && !isUuid(payload.user_id)) throw new Error('user_id must be a UUID when provided.');
   if (!payload.digest_date || !/^\d{4}-\d{2}-\d{2}$/.test(payload.digest_date)) {
     throw new Error('digest_date must be YYYY-MM-DD.');
   }
@@ -73,22 +73,22 @@ Deno.serve(async (req) => {
     if (authError || !authData.user) return json({ error: 'Unauthorized.' }, 401);
 
     const payload = assertPayload(await req.json());
-    if (payload.user_id !== authData.user.id) {
-      return json({ error: 'Cannot generate another user digest.' }, 403);
-    }
+    const userId = payload.user_id ?? authData.user.id;
+    if (userId !== authData.user.id) return json({ error: 'Cannot generate another user digest.' }, 403);
 
     const { start, end } = dateWindow(payload.digest_date);
     const [{ data: entries, error: entriesError }, { data: score, error: scoreError }] = await Promise.all([
       serviceClient
         .from('entries')
-        .select('wellness_pillar, points, normalized_activity')
-        .eq('user_id', payload.user_id)
-        .gte('created_at', start)
-        .lt('created_at', end),
+        .select('id, entry_type, activity_tag')
+        .eq('user_id', userId)
+        .neq('status', 'deleted')
+        .gte('occurred_at', start)
+        .lt('occurred_at', end),
       serviceClient
         .from('daily_scores')
         .select('*')
-        .eq('user_id', payload.user_id)
+        .eq('user_id', userId)
         .eq('score_date', payload.digest_date)
         .maybeSingle(),
     ]);
@@ -97,17 +97,41 @@ Deno.serve(async (req) => {
     if (scoreError) throw scoreError;
 
     const typedEntries = (entries ?? []) as EntrySummary[];
-    const topActivity = typedEntries[0]?.normalized_activity?.replace(/_/g, ' ') ?? 'wellness check-in';
-    const totalPoints = Number(score?.total_points ?? 0);
-    const completedPillars = Number(score?.completed_pillars ?? 0);
+    const entryIds = typedEntries.map((entry) => entry.id);
+    let typedScores: ScoreSummary[] = [];
 
-    const output: GenerateDigestOutput = {
+    if (entryIds.length > 0) {
+      const { data: scores, error: scoresError } = await serviceClient
+        .from('entry_scores')
+        .select('entry_id, wellness_pillar, points, normalized_activity')
+        .eq('user_id', userId)
+        .in('entry_id', entryIds);
+      if (scoresError) throw scoresError;
+      typedScores = (scores ?? []) as ScoreSummary[];
+    }
+
+    const totalPoints = Number(score?.total_points ?? typedScores.reduce((sum, row) => sum + Number(row.points), 0));
+    const completedPillars = Number(
+      score?.completed_pillars ?? new Set(typedScores.map((row) => row.wellness_pillar)).size,
+    );
+    const topScore = typedScores.sort((a, b) => Number(b.points) - Number(a.points))[0];
+    const topActivity = topScore?.normalized_activity?.replace(/_/g, ' ') ?? 'wellness check-in';
+    const missingPillars = ['movement', 'fuel', 'mind', 'recovery'].filter(
+      (pillar) => !typedScores.some((row) => row.wellness_pillar === pillar),
+    );
+
+    const output = {
       title: `${payload.digest_date} Dialed Digest`,
-      body: `You earned ${totalPoints} Dialed Points across ${completedPillars} wellness pillars. Top proof: ${topActivity}.`,
+      body:
+        missingPillars.length === 0
+          ? `All four pillars showed up. ${totalPoints} Dialed Points says the day had receipts.`
+          : `You earned ${totalPoints} Dialed Points across ${completedPillars} pillars. ${missingPillars[0]} is the next easy win.`,
+      tone: 'twain',
       insights: {
         entry_count: typedEntries.length,
         top_activity: topActivity,
-        TODO: 'Replace this deterministic summary with AI narrative once prompts and evaluation are finalized.',
+        missing_pillars: missingPillars,
+        TODO: 'Replace deterministic copy with TwainGPT once prompts and evaluation are finalized.',
       },
       score_summary: {
         total_points: totalPoints,
@@ -122,7 +146,7 @@ Deno.serve(async (req) => {
 
     const { error: upsertError } = await serviceClient.from('daily_digests').upsert(
       {
-        user_id: payload.user_id,
+        user_id: userId,
         digest_date: payload.digest_date,
         ...output,
       },

@@ -5,15 +5,15 @@ type WellnessPillar = 'movement' | 'fuel' | 'mind' | 'recovery';
 
 type ScoreEntryInput = {
   entry_id: string;
-  user_id: string;
-  type: EntryType;
+  user_id?: string;
+  entry_type?: EntryType;
   caption?: string;
   activity_tag?: string;
-  photo_url?: string;
   health_metadata?: Record<string, unknown>;
 };
 
 type ScoreEntryOutput = {
+  entry_id: string;
   normalized_activity: string;
   wellness_pillar: WellnessPillar;
   base_points: number;
@@ -29,10 +29,10 @@ type ScoreEntryOutput = {
 type EntryRow = {
   id: string;
   user_id: string;
-  created_at: string;
+  entry_type: EntryType;
+  occurred_at: string;
   caption: string | null;
   activity_tag: string | null;
-  photo_url: string | null;
 };
 
 type ExistingStreak = {
@@ -44,6 +44,8 @@ type ExistingStreak = {
   mind_streak: number | null;
   recovery_streak: number | null;
 };
+
+type SupabaseServiceClient = ReturnType<typeof createClient<any, 'public', any>>;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -71,42 +73,43 @@ function assertPayload(value: unknown): ScoreEntryInput {
   if (!isUuid(payload.entry_id)) {
     throw new Error('entry_id must be a UUID.');
   }
-  if (!isUuid(payload.user_id)) {
-    throw new Error('user_id must be a UUID.');
+  if (payload.user_id && !isUuid(payload.user_id)) {
+    throw new Error('user_id must be a UUID when provided.');
   }
-  if (!payload.type || !['photo', 'manual', 'health', 'location'].includes(payload.type)) {
-    throw new Error('type must be photo, manual, health, or location.');
+  if (payload.entry_type && !['photo', 'manual', 'health', 'location'].includes(payload.entry_type)) {
+    throw new Error('entry_type must be photo, manual, health, or location.');
   }
 
   return {
     entry_id: payload.entry_id,
     user_id: payload.user_id,
-    type: payload.type,
-    caption: payload.caption?.slice(0, 500),
-    activity_tag: payload.activity_tag?.slice(0, 80),
-    photo_url: payload.photo_url?.slice(0, 500),
+    entry_type: payload.entry_type,
+    caption: payload.caption?.slice(0, 1000),
+    activity_tag: payload.activity_tag?.slice(0, 120),
     health_metadata: payload.health_metadata ?? {},
   };
 }
 
-function normalizeActivity(payload: ScoreEntryInput): string {
-  const raw = payload.activity_tag || payload.caption || payload.type;
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 64) || payload.type;
+function normalizeActivity(input: Pick<ScoreEntryInput, 'activity_tag' | 'caption' | 'entry_type'>): string {
+  const raw = input.activity_tag || input.caption || input.entry_type || 'check_in';
+  return (
+    raw
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 80) || 'check_in'
+  );
 }
 
-function inferPillar(payload: ScoreEntryInput): WellnessPillar {
-  const text = `${payload.activity_tag ?? ''} ${payload.caption ?? ''}`.toLowerCase();
+function inferPillar(input: Pick<ScoreEntryInput, 'activity_tag' | 'caption' | 'entry_type'>): WellnessPillar {
+  const text = `${input.activity_tag ?? ''} ${input.caption ?? ''}`.toLowerCase();
 
-  if (/(gym|run|walk|lift|workout|sport|hike|steps|cardio|class)/.test(text)) return 'movement';
-  if (/(water|protein|meal|hydration|fast|supplement|grocery|calorie)/.test(text)) return 'fuel';
-  if (/(read|journal|meditat|deep work|therapy|learn|study|mindful)/.test(text)) return 'mind';
-  if (/(sleep|sauna|stretch|mobility|rest|cold|breath)/.test(text)) return 'recovery';
+  if (/(gym|run|walk|lift|workout|sport|hike|steps|cardio|class|strength)/.test(text)) return 'movement';
+  if (/(water|protein|meal|hydration|fast|supplement|grocery|calorie|macro)/.test(text)) return 'fuel';
+  if (/(read|journal|meditat|deep work|therapy|learn|study|mindful|focus)/.test(text)) return 'mind';
+  if (/(sleep|sauna|stretch|mobility|rest|cold|breath|recovery)/.test(text)) return 'recovery';
 
-  if (payload.type === 'health') return 'movement';
+  if (input.entry_type === 'health') return 'movement';
   return 'mind';
 }
 
@@ -115,14 +118,13 @@ function numberFromMetadata(metadata: Record<string, unknown>, key: string): num
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function fallbackScore(payload: ScoreEntryInput): ScoreEntryOutput {
-  const wellness_pillar = inferPillar(payload);
-  const normalized_activity = normalizeActivity(payload);
-  const health = payload.health_metadata ?? {};
-  const captionLength = payload.caption?.trim().length ?? 0;
-  const hasPhoto = Boolean(payload.photo_url);
+function fallbackScore(input: ScoreEntryInput): Omit<ScoreEntryOutput, 'entry_id'> {
+  const wellness_pillar = inferPillar(input);
+  const normalized_activity = normalizeActivity(input);
+  const health = input.health_metadata ?? {};
+  const captionLength = input.caption?.trim().length ?? 0;
 
-  const proofBonus = payload.type === 'photo' && hasPhoto ? 14 : payload.type === 'health' ? 10 : 4;
+  const proofBonus = input.entry_type === 'photo' ? 14 : input.entry_type === 'health' ? 10 : 4;
   const detailBonus = captionLength >= 30 ? 8 : captionLength > 0 ? 3 : 0;
   const healthBonus = Math.min(
     18,
@@ -136,8 +138,8 @@ function fallbackScore(payload: ScoreEntryInput): ScoreEntryOutput {
   const base_points = 40 + proofBonus;
   const bonus_points = detailBonus + healthBonus;
   const total_points = Math.max(5, Math.min(100, base_points + bonus_points));
-  const confidence = Math.min(0.95, hasPhoto ? 0.82 : payload.type === 'health' ? 0.88 : 0.68);
-  const flagged = captionLength > 0 && /(injury|sick|pain|unsafe)/i.test(payload.caption ?? '');
+  const confidence = Math.min(0.95, input.entry_type === 'health' ? 0.88 : input.entry_type === 'photo' ? 0.82 : 0.68);
+  const flagged = captionLength > 0 && /(injury|sick|pain|unsafe)/i.test(input.caption ?? '');
 
   return {
     normalized_activity,
@@ -146,17 +148,17 @@ function fallbackScore(payload: ScoreEntryInput): ScoreEntryOutput {
     bonus_points,
     total_points,
     confidence,
-    ai_subtext: `${normalized_activity.replace(/_/g, ' ')} scored as ${wellness_pillar} proof for ${total_points} Dialed Points.`,
+    ai_subtext: `${normalized_activity.replace(/_/g, ' ')} lands as ${wellness_pillar} proof for ${total_points} Dialed Points.`,
     flagged,
     flag_reason: flagged ? 'Safety-sensitive language detected for later review.' : undefined,
     scoring_explanation:
-      'Fallback scoring used rule-based proof, detail, and health metadata bonuses. TODO: replace or augment with server-side AI scoring.',
+      'Blueprint fallback: rule-based proof, detail, and health metadata scoring. Replace with AI scoring after prompt and model evaluation.',
   };
 }
 
 function dateWindow(scoreDate: string) {
   const start = `${scoreDate}T00:00:00.000Z`;
-  const next = new Date(`${scoreDate}T00:00:00.000Z`);
+  const next = new Date(start);
   next.setUTCDate(next.getUTCDate() + 1);
   return { start, end: next.toISOString() };
 }
@@ -168,19 +170,21 @@ function yesterday(date: string): string {
 }
 
 async function recomputeDailyScores(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: SupabaseServiceClient,
   userId: string,
   scoreDate: string,
 ) {
   const { start, end } = dateWindow(scoreDate);
-  const { data: entries, error } = await serviceClient
+  const { data: dayEntries, error: entriesError } = await serviceClient
     .from('entries')
-    .select('wellness_pillar, points')
+    .select('id')
     .eq('user_id', userId)
-    .gte('created_at', start)
-    .lt('created_at', end);
+    .neq('status', 'deleted')
+    .gte('occurred_at', start)
+    .lt('occurred_at', end);
 
-  if (error) throw error;
+  if (entriesError) throw entriesError;
+  const entryIds = ((dayEntries ?? []) as Array<{ id: string }>).map((entry) => entry.id);
 
   const totals: Record<WellnessPillar, number> = {
     movement: 0,
@@ -189,10 +193,20 @@ async function recomputeDailyScores(
     recovery: 0,
   };
 
-  for (const entry of entries ?? []) {
-    const pillar = entry.wellness_pillar as WellnessPillar | null;
-    if (pillar && pillar in totals) {
-      totals[pillar] += Number(entry.points ?? 0);
+  if (entryIds.length > 0) {
+    const { data: scores, error: scoresError } = await serviceClient
+      .from('entry_scores')
+      .select('wellness_pillar, points')
+      .eq('user_id', userId)
+      .in('entry_id', entryIds);
+
+    if (scoresError) throw scoresError;
+
+    for (const score of scores ?? []) {
+      const pillar = score.wellness_pillar as WellnessPillar | null;
+      if (pillar && pillar in totals) {
+        totals[pillar] += Number(score.points ?? 0);
+      }
     }
   }
 
@@ -220,7 +234,7 @@ async function recomputeDailyScores(
 }
 
 async function recomputeStreaks(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: SupabaseServiceClient,
   userId: string,
   scoreDate: string,
   totals: Record<WellnessPillar, number>,
@@ -235,6 +249,8 @@ async function recomputeStreaks(
 
   if (error) throw error;
   const existingStreak = existing as ExistingStreak | null;
+  const completedToday = Object.values(totals).some((points) => points > 0);
+  if (!completedToday) return;
 
   const wasAlreadyCompletedToday = existingStreak?.last_completed_date === scoreDate;
   const continues = existingStreak?.last_completed_date === yesterday(scoreDate);
@@ -262,11 +278,12 @@ async function recomputeStreaks(
 
   if (upsertError) throw upsertError;
 
-  await serviceClient
+  const { error: scoreError } = await serviceClient
     .from('daily_scores')
     .update({ streak_count: current, updated_at: new Date().toISOString() })
     .eq('user_id', userId)
     .eq('score_date', scoreDate);
+  if (scoreError) throw scoreError;
 }
 
 Deno.serve(async (req) => {
@@ -287,70 +304,79 @@ Deno.serve(async (req) => {
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
     const { data: authData, error: authError } = await userClient.auth.getUser();
-    if (authError || !authData.user) {
-      return json({ error: 'Unauthorized.' }, 401);
-    }
+    if (authError || !authData.user) return json({ error: 'Unauthorized.' }, 401);
 
     const payload = assertPayload(await req.json());
-    if (payload.user_id !== authData.user.id) {
+    if (payload.user_id && payload.user_id !== authData.user.id) {
       return json({ error: 'Payload user_id must match the authenticated user.' }, 403);
     }
 
     const { data: entry, error: entryError } = await serviceClient
       .from('entries')
-      .select('id, user_id, created_at, caption, activity_tag, photo_url')
+      .select('id, user_id, entry_type, occurred_at, caption, activity_tag')
       .eq('id', payload.entry_id)
-      .eq('user_id', payload.user_id)
+      .eq('user_id', authData.user.id)
+      .neq('status', 'deleted')
       .maybeSingle();
 
     if (entryError) throw entryError;
-    if (!entry) {
-      return json({ error: 'Entry not found for authenticated user.' }, 404);
-    }
+    if (!entry) return json({ error: 'Entry not found for authenticated user.' }, 404);
     const ownedEntry = entry as EntryRow;
 
-    const result = fallbackScore({
+    const mergedInput: ScoreEntryInput = {
       ...payload,
+      user_id: ownedEntry.user_id,
+      entry_type: payload.entry_type ?? ownedEntry.entry_type,
       caption: payload.caption ?? ownedEntry.caption ?? undefined,
       activity_tag: payload.activity_tag ?? ownedEntry.activity_tag ?? undefined,
-      photo_url: payload.photo_url ?? ownedEntry.photo_url ?? undefined,
-    });
+    };
+    const result = fallbackScore(mergedInput);
 
-    const { error: updateError } = await serviceClient
-      .from('entries')
-      .update({
-        type: payload.type,
-        caption: payload.caption ?? ownedEntry.caption,
-        activity_tag: payload.activity_tag ?? ownedEntry.activity_tag,
-        photo_url: payload.photo_url ?? ownedEntry.photo_url,
+    const { error: scoreError } = await serviceClient.from('entry_scores').upsert(
+      {
+        entry_id: ownedEntry.id,
+        user_id: ownedEntry.user_id,
         normalized_activity: result.normalized_activity,
         wellness_pillar: result.wellness_pillar,
+        points: result.total_points,
         base_points: result.base_points,
         bonus_points: result.bonus_points,
-        points: result.total_points,
         confidence: result.confidence,
-        ai_subtext: result.ai_subtext,
         scoring_source: 'rule',
+        ai_subtext: result.ai_subtext,
+        scoring_explanation: result.scoring_explanation,
+        model_name: 'dialed-blueprint-fallback',
         flagged: result.flagged,
         flag_reason: result.flag_reason ?? null,
         metadata: {
-          health_metadata: payload.health_metadata ?? {},
-          scoring_explanation: result.scoring_explanation,
+          health_metadata: mergedInput.health_metadata ?? {},
           score_entry_stub: true,
         },
+        scored_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'entry_id' },
+    );
+    if (scoreError) throw scoreError;
+
+    const { error: entryUpdateError } = await serviceClient
+      .from('entries')
+      .update({
+        caption: mergedInput.caption ?? null,
+        activity_tag: mergedInput.activity_tag ?? null,
+        wellness_pillar: result.wellness_pillar,
+        status: result.flagged ? 'rejected' : 'scored',
         updated_at: new Date().toISOString(),
       })
-      .eq('id', payload.entry_id)
-      .eq('user_id', payload.user_id);
+      .eq('id', ownedEntry.id)
+      .eq('user_id', ownedEntry.user_id);
+    if (entryUpdateError) throw entryUpdateError;
 
-    if (updateError) throw updateError;
+    const scoreDate = ownedEntry.occurred_at.slice(0, 10);
+    const daily = await recomputeDailyScores(serviceClient, ownedEntry.user_id, scoreDate);
+    await recomputeStreaks(serviceClient, ownedEntry.user_id, scoreDate, daily.totals);
 
-    const scoreDate = ownedEntry.created_at.slice(0, 10);
-    const daily = await recomputeDailyScores(serviceClient, payload.user_id, scoreDate);
-    await recomputeStreaks(serviceClient, payload.user_id, scoreDate, daily.totals);
-
-    const output: ScoreEntryOutput = result;
-    return json(output);
+    return json({ entry_id: ownedEntry.id, ...result } satisfies ScoreEntryOutput);
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'score-entry failed.' }, 400);
   }

@@ -1,13 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
+type ShareAssetType = 'story_card' | 'reel' | 'leaderboard_card' | 'digest_card';
+
 type CreateShareCardInput = {
   entry_id?: string;
   score_date?: string;
   template_id: string;
-};
-
-type CreateShareCardOutput = {
-  asset_url: string;
+  asset_type?: ShareAssetType;
+  visibility?: 'private' | 'public';
+  extension?: 'png' | 'jpg' | 'jpeg' | 'mp4';
 };
 
 const corsHeaders = {
@@ -42,10 +43,23 @@ function assertPayload(value: unknown): CreateShareCardInput {
   if (!payload.entry_id && !payload.score_date) {
     throw new Error('entry_id or score_date is required.');
   }
+  if (payload.asset_type && !['story_card', 'reel', 'leaderboard_card', 'digest_card'].includes(payload.asset_type)) {
+    throw new Error('asset_type is invalid.');
+  }
+  if (payload.visibility && !['private', 'public'].includes(payload.visibility)) {
+    throw new Error('visibility is invalid.');
+  }
+  if (payload.extension && !['png', 'jpg', 'jpeg', 'mp4'].includes(payload.extension)) {
+    throw new Error('extension is invalid.');
+  }
+
   return {
     entry_id: payload.entry_id,
     score_date: payload.score_date,
     template_id: payload.template_id.slice(0, 80),
+    asset_type: payload.asset_type ?? (payload.entry_id ? 'story_card' : 'digest_card'),
+    visibility: payload.visibility ?? 'private',
+    extension: payload.extension ?? (payload.asset_type === 'reel' ? 'mp4' : 'png'),
   };
 }
 
@@ -74,9 +88,10 @@ Deno.serve(async (req) => {
     if (payload.entry_id) {
       const { data: entry, error } = await serviceClient
         .from('entries')
-        .select('id, user_id')
+        .select('id')
         .eq('id', payload.entry_id)
         .eq('user_id', authData.user.id)
+        .neq('status', 'deleted')
         .maybeSingle();
       if (error) throw error;
       if (!entry) return json({ error: 'Entry not found for authenticated user.' }, 404);
@@ -93,19 +108,39 @@ Deno.serve(async (req) => {
       if (!score) return json({ error: 'Daily score not found for authenticated user.' }, 404);
     }
 
-    // TODO: Local mobile rendering is the primary v1 path. The app should render
-    // cards/reels on-device and upload them to share-assets/{user_id}/{asset_id}.png.
-    // TODO: Add cloud rendering later for scheduled digests, server-generated cards,
-    // and video export workflows.
     const assetId = crypto.randomUUID();
-    const output: CreateShareCardOutput = {
-      asset_url: `share-assets/${authData.user.id}/${assetId}.png`,
-    };
+    const storagePath = `share-assets/${authData.user.id}/${assetId}.${payload.extension}`;
+
+    const { data: asset, error: insertError } = await serviceClient
+      .from('share_assets')
+      .insert({
+        id: assetId,
+        user_id: authData.user.id,
+        entry_id: payload.entry_id ?? null,
+        score_date: payload.score_date ?? null,
+        asset_type: payload.asset_type,
+        template_id: payload.template_id,
+        bucket_id: 'share-assets',
+        storage_path: storagePath,
+        visibility: payload.visibility,
+        status: 'pending_upload',
+        metadata: {
+          rendering_mode: 'mobile_first_stub',
+          TODO: 'Render card/reel on-device first; add cloud rendering after visual templates settle.',
+        },
+      })
+      .select('id, storage_path, status, visibility')
+      .single();
+
+    if (insertError) throw insertError;
 
     return json({
-      ...output,
+      share_asset_id: asset.id,
+      upload_path: asset.storage_path,
+      bucket_id: 'share-assets',
+      status: asset.status,
+      visibility: asset.visibility,
       template_id: payload.template_id,
-      rendering_mode: 'mobile_first_stub',
     });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'create-share-card failed.' }, 400);
