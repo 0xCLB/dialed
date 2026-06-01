@@ -1,19 +1,32 @@
-import { format } from 'date-fns';
-
-import { DATE_KEY_FORMAT } from '@/lib/constants';
-import { getDailyHealthSnapshot, isAppleHealthAvailable } from '@/lib/healthkit';
-import { supabase } from '@/lib/supabase';
+import {
+  getHealthSamplesForDate,
+  saveHealthSamples,
+  syncAppleHealthToday,
+} from '@/features/health/healthService';
+import type { HealthSample } from '@/features/health/types';
 import type { HealthMetricSnapshot } from '@/types/domain';
 
-export async function syncTodayHealth(userId: string, date = new Date()) {
-  const available = await isAppleHealthAvailable();
-  if (!available) {
-    throw new Error('Apple Health is only available on an iPhone build with HealthKit enabled.');
-  }
+export * from '@/features/health/healthService';
+export * from '@/features/health/types';
 
-  const snapshot = await getDailyHealthSnapshot(date);
-  await upsertHealthSnapshot(userId, date, snapshot);
-  return snapshot;
+function snapshotFromSamples(samples: HealthSample[]): HealthMetricSnapshot {
+  const valueFor = (metricType: HealthSample['metricType']) =>
+    samples.find((sample) => sample.metricType === metricType)?.value ?? 0;
+
+  return {
+    steps: Number(valueFor('steps')),
+    activeEnergyKcal: Number(valueFor('calories')),
+    exerciseMinutes: Number(valueFor('workout')),
+    sleepMinutes: Number(valueFor('sleep')),
+    mindfulMinutes: Number(valueFor('mindfulness')),
+    source: 'apple_health',
+    syncedAt: new Date().toISOString(),
+  };
+}
+
+export async function syncTodayHealth(userId: string, date = new Date()) {
+  const result = await syncAppleHealthToday(userId, date);
+  return snapshotFromSamples(result.samples);
 }
 
 export async function upsertHealthSnapshot(
@@ -21,33 +34,68 @@ export async function upsertHealthSnapshot(
   date: Date,
   snapshot: HealthMetricSnapshot,
 ) {
-  const { error } = await supabase.from('health_sync_samples').upsert(
+  const samples: HealthSample[] = [
     {
-      user_id: userId,
-      day: format(date, DATE_KEY_FORMAT),
-      metrics: snapshot,
-      source: 'apple_health',
+      userId,
+      provider: 'apple_health',
+      metricType: 'steps',
+      value: snapshot.steps ?? 0,
+      unit: 'count',
+      startedAt: date.toISOString(),
+      endedAt: date.toISOString(),
+      sourceIdentifier: 'legacy_snapshot',
+      metadata: { source: 'legacy_snapshot' },
     },
-    { onConflict: 'user_id,day,source' },
-  );
+    {
+      userId,
+      provider: 'apple_health',
+      metricType: 'calories',
+      value: snapshot.activeEnergyKcal ?? 0,
+      unit: 'kcal',
+      startedAt: date.toISOString(),
+      endedAt: date.toISOString(),
+      sourceIdentifier: 'legacy_snapshot',
+      metadata: { source: 'legacy_snapshot' },
+    },
+    {
+      userId,
+      provider: 'apple_health',
+      metricType: 'workout',
+      value: snapshot.exerciseMinutes ?? 0,
+      unit: 'min',
+      startedAt: date.toISOString(),
+      endedAt: date.toISOString(),
+      sourceIdentifier: 'legacy_snapshot',
+      metadata: { source: 'legacy_snapshot' },
+    },
+    {
+      userId,
+      provider: 'apple_health',
+      metricType: 'sleep',
+      value: snapshot.sleepMinutes ?? 0,
+      unit: 'min',
+      startedAt: date.toISOString(),
+      endedAt: date.toISOString(),
+      sourceIdentifier: 'legacy_snapshot',
+      metadata: { source: 'legacy_snapshot' },
+    },
+    {
+      userId,
+      provider: 'apple_health',
+      metricType: 'mindfulness',
+      value: snapshot.mindfulMinutes ?? 0,
+      unit: 'min',
+      startedAt: date.toISOString(),
+      endedAt: date.toISOString(),
+      sourceIdentifier: 'legacy_snapshot',
+      metadata: { source: 'legacy_snapshot' },
+    },
+  ];
 
-  if (error) {
-    throw error;
-  }
+  return saveHealthSamples(samples.filter((sample) => Number(sample.value ?? 0) > 0));
 }
 
 export async function getLatestHealthSnapshot(userId: string) {
-  const { data, error } = await supabase
-    .from('health_sync_samples')
-    .select('*')
-    .eq('user_id', userId)
-    .order('day', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return (data?.metrics ?? null) as HealthMetricSnapshot | null;
+  const samples = await getHealthSamplesForDate(userId, new Date());
+  return samples.length > 0 ? snapshotFromSamples(samples) : null;
 }

@@ -2,7 +2,7 @@ import { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 
 import { identify } from '@/lib/analytics';
-import { configureRevenueCat, identifyPurchasesUser } from '@/lib/revenuecat';
+import { configureRevenueCat, identifyPurchasesUser, logoutRevenueCat } from '@/lib/revenuecat';
 import { supabase } from '@/lib/supabase';
 import { registerForPushNotifications } from '@/lib/notifications';
 import type { Profile } from '@/types/domain';
@@ -16,18 +16,20 @@ type AuthState = {
   bootstrap: () => Promise<() => void>;
   refreshProfile: () => Promise<void>;
   setSession: (session: Session | null) => Promise<void>;
+  signOut: () => Promise<void>;
 };
 
 function mapProfile(row: {
   id: string;
   username: string | null;
   display_name: string | null;
-  avatar_url: string | null;
+  avatar_path: string | null;
   bio: string | null;
+  city: string | null;
   timezone: string;
-  onboarding_complete: boolean;
-  is_private: boolean;
-  pro_until: string | null;
+  onboarding_completed: boolean;
+  privacy_default: 'private' | 'friends' | 'public';
+  is_pro: boolean;
   created_at: string;
   updated_at: string;
 }): Profile {
@@ -35,12 +37,15 @@ function mapProfile(row: {
     id: row.id,
     username: row.username,
     displayName: row.display_name,
-    avatarUrl: row.avatar_url,
+    avatarUrl: row.avatar_path,
     bio: row.bio,
+    city: row.city,
     timezone: row.timezone,
-    onboardingComplete: row.onboarding_complete,
-    isPrivate: row.is_private,
-    proUntil: row.pro_until,
+    onboardingComplete: row.onboarding_completed,
+    privacyDefault: row.privacy_default,
+    isPrivate: row.privacy_default === 'private',
+    isPro: row.is_pro,
+    proUntil: null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -104,5 +109,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const profile = await fetchProfile(session.user.id);
     set({ profile });
+  },
+  signOut: async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      throw error;
+    }
+    logoutRevenueCat().catch(() => undefined);
+    set({ session: null, profile: null });
   },
 }));

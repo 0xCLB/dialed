@@ -5,19 +5,24 @@ import { LoadingState } from '@/components/ui/StateViews';
 import { useAuth } from '@/features/auth/useAuth';
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { session, loading, initialized } = useAuth();
+  const { session, profile, loading, initialized } = useAuth();
 
   useEffect(() => {
     if (initialized && !loading && !session) {
       router.replace('/(auth)/login');
+      return;
     }
-  }, [initialized, loading, session]);
+
+    if (initialized && !loading && session && (!profile || !profile.onboardingComplete)) {
+      router.replace('/(auth)/onboarding');
+    }
+  }, [initialized, loading, profile, session]);
 
   if (!initialized || loading) {
     return <LoadingState label="Checking session" />;
   }
 
-  if (!session) {
+  if (!session || !profile?.onboardingComplete) {
     return null;
   }
 

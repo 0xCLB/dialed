@@ -6,6 +6,7 @@ import { ArrowLeft, Plus } from 'lucide-react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { LockedFeatureCard } from '@/components/monetization/LockedFeatureCard';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/StateViews';
 import { Screen } from '@/components/ui/Screen';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -14,6 +15,7 @@ import { TextInputField } from '@/components/ui/TextInputField';
 import { theme } from '@/components/ui/theme';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { useRequireSession } from '@/features/auth/useRequireSession';
+import { usePro } from '@/features/monetization/usePro';
 import { createChallenge, listChallenges } from '@/features/social/challenge-service';
 import type { Challenge, WellnessPillar } from '@/types/domain';
 
@@ -21,6 +23,7 @@ type ChallengePillar = WellnessPillar | 'all';
 
 export default function ChallengesScreen() {
   useRequireSession();
+  const pro = usePro();
   const userId = useAuthStore((state) => state.session?.user.id);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
   const [title, setTitle] = useState('');
@@ -95,6 +98,24 @@ export default function ChallengesScreen() {
           <Plus size={18} color={theme.colors.white} /> Create
         </Button>
       </Card>
+
+      {pro.isPro ? (
+        <Card style={styles.card}>
+          <Text variant="subtitle">Private challenge builder</Text>
+          <Text muted>
+            Pro private challenges are staged here. Next pass adds invites, rules, and custom scoring.
+          </Text>
+          <Button variant="secondary" disabled>
+            Coming soon
+          </Button>
+        </Card>
+      ) : (
+        <LockedFeatureCard
+          title="Custom/private challenges"
+          body="Create tighter competitions for your crew. Public/basic challenges stay free."
+          onPress={() => pro.openPaywall('private_challenge')}
+        />
+      )}
 
       {loading ? <LoadingState label="Loading challenges" /> : null}
       {error ? <ErrorState message={error} onRetry={load} /> : null}

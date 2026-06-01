@@ -15,7 +15,7 @@ export type GoalKey =
   | 'reduce_stress'
   | 'stay_consistent';
 
-export type ReactionType = 'fire' | 'strong' | 'clean' | 'locked' | 'clap';
+export type ReactionType = 'fire' | 'dialed' | 'respect' | 'slippin' | 'water' | 'check';
 
 export type ShareTemplate = 'proof' | 'rings' | 'weekly_digest' | 'challenge';
 
@@ -46,9 +46,12 @@ export type Profile = {
   displayName: string | null;
   avatarUrl: string | null;
   bio: string | null;
+  city: string | null;
   timezone: string;
   onboardingComplete: boolean;
+  privacyDefault: 'private' | 'friends' | 'public';
   isPrivate: boolean;
+  isPro: boolean;
   proUntil: string | null;
   createdAt: string;
   updatedAt: string;

@@ -9,11 +9,12 @@ import 'react-native-reanimated';
 
 import { theme } from '@/components/ui/theme';
 import { AuthProvider } from '@/features/auth/AuthProvider';
+import { configureNotificationHandlers } from '@/lib/notifications';
 
 export { ErrorBoundary } from 'expo-router';
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  initialRouteName: 'index',
 };
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -47,6 +48,8 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
+  useEffect(() => configureNotificationHandlers(), []);
+
   if (!loaded) {
     return null;
   }
@@ -60,6 +63,7 @@ export default function RootLayout() {
             headerShown: false,
             contentStyle: { backgroundColor: theme.colors.background },
           }}>
+          <Stack.Screen name="index" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="entry/[id]" />
@@ -69,6 +73,8 @@ export default function RootLayout() {
           <Stack.Screen name="challenges/index" />
           <Stack.Screen name="notifications/index" />
           <Stack.Screen name="settings/index" />
+          <Stack.Screen name="settings/notifications" />
+          <Stack.Screen name="settings/health" />
           <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
         </Stack>
       </AuthProvider>

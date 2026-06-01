@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
+import { logoutRevenueCat } from '@/lib/revenuecat';
 import { supabase } from '@/lib/supabase';
-import type { GoalKey } from '@/types/domain';
 
 export const phoneSchema = z
   .string()
@@ -15,7 +15,7 @@ export const otpSchema = z
   .regex(/^\d{6}$/, 'Enter the 6 digit code');
 
 export async function sendOtp(phone: string) {
-  const parsed = phoneSchema.parse(phone);
+  const parsed = formatE164Phone(phone);
   const { error } = await supabase.auth.signInWithOtp({
     phone: parsed,
     options: {
@@ -29,7 +29,7 @@ export async function sendOtp(phone: string) {
 }
 
 export async function verifyOtp(phone: string, token: string) {
-  const parsedPhone = phoneSchema.parse(phone);
+  const parsedPhone = formatE164Phone(phone);
   const parsedToken = otpSchema.parse(token);
   const { data, error } = await supabase.auth.verifyOtp({
     phone: parsedPhone,
@@ -48,12 +48,16 @@ export async function completeOnboarding({
   userId,
   displayName,
   username,
-  goals,
+  city,
+  timezone,
+  privacyDefault,
 }: {
   userId: string;
   displayName: string;
   username: string;
-  goals: GoalKey[];
+  city?: string | null;
+  timezone?: string | null;
+  privacyDefault: 'private' | 'friends' | 'public';
 }) {
   const normalizedUsername = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
 
@@ -61,27 +65,14 @@ export async function completeOnboarding({
     id: userId,
     display_name: displayName.trim(),
     username: normalizedUsername,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    onboarding_complete: true,
+    city: city?.trim() || null,
+    timezone: timezone?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    privacy_default: privacyDefault,
+    onboarding_completed: true,
   });
 
   if (profileError) {
     throw profileError;
-  }
-
-  if (goals.length > 0) {
-    await supabase.from('user_goals').delete().eq('user_id', userId);
-    const { error: goalsError } = await supabase.from('user_goals').insert(
-      goals.map((goal, index) => ({
-        user_id: userId,
-        goal_key: goal,
-        priority: index + 1,
-      })),
-    );
-
-    if (goalsError) {
-      throw goalsError;
-    }
   }
 }
 
@@ -90,4 +81,12 @@ export async function signOut() {
   if (error) {
     throw error;
   }
+  logoutRevenueCat().catch(() => undefined);
+}
+
+export function formatE164Phone(input: string) {
+  const trimmed = input.trim();
+  const digits = trimmed.replace(/\D/g, '');
+  const value = trimmed.startsWith('+') ? `+${digits}` : `+1${digits}`;
+  return phoneSchema.parse(value);
 }

@@ -72,9 +72,7 @@ const config: ExpoConfig = {
   extra: {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-    aiEdgeFunctionUrl: process.env.EXPO_PUBLIC_AI_EDGE_FUNCTION_URL,
-    revenueCatIosKey: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY,
-    revenueCatAndroidKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY,
+    revenueCatApiKey: process.env.EXPO_PUBLIC_REVENUECAT_API_KEY,
     easProjectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
     appEnv: process.env.EXPO_PUBLIC_APP_ENV ?? 'development',
   },

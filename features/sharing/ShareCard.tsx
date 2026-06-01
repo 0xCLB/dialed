@@ -4,10 +4,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { Text } from '@/components/ui/Text';
 import { PILLARS } from '@/lib/constants';
-import type { Entry } from '@/types/domain';
+import type { EntryWithScore, WellnessPillar } from '@/features/entries/types';
 
-export const ShareCard = forwardRef<View, { entry: Entry }>(function ShareCard({ entry }, ref) {
-  const pillar = PILLARS[entry.pillar];
+function entryPillar(entry: EntryWithScore): WellnessPillar {
+  return entry.score?.wellnessPillar ?? entry.wellnessPillar ?? 'mind';
+}
+
+function entryTitle(entry: EntryWithScore) {
+  return entry.activityTag?.replace(/[_-]+/g, ' ') ?? 'Dialed proof';
+}
+
+export const ShareCard = forwardRef<View, { entry: EntryWithScore }>(function ShareCard({ entry }, ref) {
+  const pillarKey = entryPillar(entry);
+  const pillar = PILLARS[pillarKey];
 
   return (
     <View ref={ref} collapsable={false} style={styles.wrap}>
@@ -17,13 +26,13 @@ export const ShareCard = forwardRef<View, { entry: Entry }>(function ShareCard({
         </Text>
         <View style={styles.copy}>
           <Text variant="hero" style={styles.title}>
-            {entry.shareHeadline ?? entry.title}
+            {entryTitle(entry)}
           </Text>
-          <Text style={styles.body}>{entry.aiSummary ?? entry.caption ?? pillar.description}</Text>
+          <Text style={styles.body}>{entry.score?.aiSubtext ?? entry.caption ?? pillar.description}</Text>
         </View>
         <View style={styles.footer}>
           <Text variant="metric" style={styles.points}>
-            {entry.score}
+            {entry.score?.points ?? 0}
           </Text>
           <Text variant="caption" style={styles.kicker}>
             Dialed Points · {pillar.label}

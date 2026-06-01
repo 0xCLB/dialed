@@ -28,7 +28,7 @@ export default function VerifyScreen() {
       }
       const nextProfile = useAuthStore.getState().profile;
       track('auth_otp_verified');
-      router.replace(nextProfile?.onboardingComplete ? '/(tabs)' : '/(auth)/onboarding');
+      router.replace(nextProfile?.onboardingComplete ? '/(tabs)/home' : '/(auth)/onboarding');
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : 'Invalid code.');
     } finally {

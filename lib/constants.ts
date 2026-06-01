@@ -15,14 +15,14 @@ export const PILLARS: Record<
 > = {
   movement: {
     label: 'Movement',
-    color: '#0E8F68',
-    softColor: '#DFF5EC',
+    color: '#7C3AED',
+    softColor: '#EEE7FF',
     description: 'Training, steps, sport, active minutes, and workouts.',
   },
   fuel: {
     label: 'Fuel',
-    color: '#D97706',
-    softColor: '#FFF1D6',
+    color: '#10B981',
+    softColor: '#DFF8ED',
     description: 'Hydration, protein, healthy meals, fasting, and supplements.',
   },
   mind: {
@@ -33,8 +33,8 @@ export const PILLARS: Record<
   },
   recovery: {
     label: 'Recovery',
-    color: '#7C3AED',
-    softColor: '#EEE7FF',
+    color: '#F59E0B',
+    softColor: '#FEF3C7',
     description: 'Sleep, mobility, sauna, stretching, breathwork, and rest.',
   },
 };
@@ -86,7 +86,7 @@ export const GOALS: Array<{ key: GoalKey; label: string }> = [
 ];
 
 export const STORAGE_BUCKETS = {
-  entryProofs: 'entry-proofs',
+  entryProofs: 'entry-photos',
   shareAssets: 'share-assets',
 } as const;
 

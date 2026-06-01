@@ -9,5 +9,6 @@ export function useAuth() {
     error: useAuthStore((state) => state.error),
     refreshProfile: useAuthStore((state) => state.refreshProfile),
     setSession: useAuthStore((state) => state.setSession),
+    signOut: useAuthStore((state) => state.signOut),
   };
 }

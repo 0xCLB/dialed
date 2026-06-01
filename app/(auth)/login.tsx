@@ -32,8 +32,7 @@ export default function LoginScreen() {
     <Screen>
       <Text variant="hero">Dialed Self</Text>
       <Text muted>
-        Prove the healthy actions you do every day, earn Dialed Points, and compete across your
-        whole health stack.
+        Prove daily health actions, earn Dialed Points, and compete across the four pillars.
       </Text>
       <Card>
         <TextInputField
@@ -44,7 +43,7 @@ export default function LoginScreen() {
           autoComplete="tel"
           keyboardType="phone-pad"
           textContentType="telephoneNumber"
-          helper="SMS OTP auth is powered by Supabase."
+          helper="Use E.164 format, or enter a US number and Dialed will format it."
         />
       </Card>
       {error ? <Text style={{ color: '#C2410C' }}>{error}</Text> : null}

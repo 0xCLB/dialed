@@ -1,11 +1,18 @@
 import { StyleSheet, View } from 'react-native';
-import { UserRound } from 'lucide-react-native';
+import { Bell, UserRound } from 'lucide-react-native';
 
+import { Button } from '@/components/ui/Button';
 import { Text } from '@/components/ui/Text';
 import { theme } from '@/components/ui/theme';
 import type { Profile } from '@/types/domain';
 
-export function ProfileHeader({ profile }: { profile: Profile | null }) {
+export function ProfileHeader({
+  profile,
+  onNotifications,
+}: {
+  profile: Profile | null;
+  onNotifications?: () => void;
+}) {
   return (
     <View style={styles.row}>
       <View style={styles.avatar}>
@@ -19,6 +26,11 @@ export function ProfileHeader({ profile }: { profile: Profile | null }) {
           {profile?.displayName ?? profile?.username ?? 'Dialed athlete'}
         </Text>
       </View>
+      {onNotifications ? (
+        <Button variant="secondary" style={styles.iconButton} onPress={onNotifications}>
+          <Bell size={18} color={theme.colors.ink} />
+        </Button>
+      ) : null}
     </View>
   );
 }
@@ -39,5 +51,10 @@ const styles = StyleSheet.create({
   },
   copy: {
     flex: 1,
+  },
+  iconButton: {
+    width: 44,
+    minHeight: 44,
+    paddingHorizontal: 0,
   },
 });

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { ArrowLeft, Bell, HeartPulse, Lock, LogOut } from 'lucide-react-native';
+import { ArrowLeft, Bell, Crown, HeartPulse, Lock, LogOut } from 'lucide-react-native';
 
+import { ProBadge } from '@/components/monetization/ProBadge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
@@ -11,12 +12,14 @@ import { theme } from '@/components/ui/theme';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { signOut } from '@/features/auth/auth-service';
 import { useRequireSession } from '@/features/auth/useRequireSession';
+import { usePro } from '@/features/monetization/usePro';
 import { supabase } from '@/lib/supabase';
 
 export default function SettingsScreen() {
   useRequireSession();
   const profile = useAuthStore((state) => state.profile);
   const refreshProfile = useAuthStore((state) => state.refreshProfile);
+  const pro = usePro();
   const [privateMode, setPrivateMode] = useState(Boolean(profile?.isPrivate));
   const [saving, setSaving] = useState(false);
 
@@ -56,6 +59,33 @@ export default function SettingsScreen() {
       </View>
 
       <Card style={styles.card}>
+        <View style={styles.settingRow}>
+          <Crown size={20} color={theme.colors.primary} />
+          <View style={styles.copy}>
+            <Text>Dialed Pro</Text>
+            <Text variant="caption" muted>
+              {pro.isPro || profile?.isPro
+                ? 'Active entitlement detected.'
+                : 'Premium insights, templates, reels, and challenge tools.'}
+            </Text>
+          </View>
+          {pro.isPro || profile?.isPro ? <ProBadge compact /> : null}
+        </View>
+        <View style={styles.actionRow}>
+          <Button style={styles.actionButton} onPress={() => pro.openPaywall('settings')}>
+            {pro.isPro || profile?.isPro ? 'Manage Subscription' : 'Go Pro'}
+          </Button>
+          <Button
+            variant="secondary"
+            loading={pro.loading}
+            style={styles.actionButton}
+            onPress={() => pro.restore()}>
+            Restore
+          </Button>
+        </View>
+      </Card>
+
+      <Card style={styles.card}>
         <Text variant="subtitle">Privacy</Text>
         <Pressable onPress={togglePrivate} disabled={saving} style={styles.settingRow}>
           <Lock size={20} color={theme.colors.ink} />
@@ -82,6 +112,9 @@ export default function SettingsScreen() {
             </Text>
           </View>
         </View>
+        <Button variant="secondary" onPress={() => router.push('/settings/health')}>
+          Manage health sources
+        </Button>
         <View style={styles.settingRow}>
           <Bell size={20} color={theme.colors.accent} />
           <View style={styles.copy}>
@@ -91,6 +124,9 @@ export default function SettingsScreen() {
             </Text>
           </View>
         </View>
+        <Button variant="secondary" onPress={() => router.push('/settings/notifications')}>
+          Manage smart alerts
+        </Button>
       </Card>
 
       <Button variant="danger" onPress={handleSignOut}>
@@ -119,6 +155,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionButton: {
+    flex: 1,
   },
   copy: {
     flex: 1,

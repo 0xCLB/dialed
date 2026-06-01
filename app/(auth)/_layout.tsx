@@ -7,7 +7,7 @@ export default function AuthLayout() {
   const profile = useAuthStore((state) => state.profile);
 
   if (session && profile?.onboardingComplete) {
-    return <Redirect href="/(tabs)" />;
+    return <Redirect href="/(tabs)/home" />;
   }
 
   return <Stack screenOptions={{ headerShown: false }} />;

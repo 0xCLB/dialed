@@ -2,11 +2,9 @@ import 'react-native-url-polyfill/auto';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-import { env } from '@/lib/env';
-import type { Database } from '@/types/database';
+import { assertSupabaseEnv, env } from '@/lib/env';
 
 const memoryStorage = new Map<string, string>();
 
@@ -33,20 +31,11 @@ const ssrSafeWebStorage = {
   },
 };
 
-const secureStoreStorage = {
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) =>
-    SecureStore.setItemAsync(key, value, {
-      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    }),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
-};
+assertSupabaseEnv();
 
-const nativeStorage = Platform.OS === 'ios' ? secureStoreStorage : AsyncStorage;
-
-export const supabase = createClient<Database>(env.supabaseUrl, env.supabaseAnonKey, {
+export const supabase = createClient(env.supabaseUrl, env.supabaseAnonKey, {
   auth: {
-    storage: Platform.OS === 'web' ? ssrSafeWebStorage : nativeStorage,
+    storage: Platform.OS === 'web' ? ssrSafeWebStorage : AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

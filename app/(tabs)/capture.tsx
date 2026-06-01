@@ -1,210 +1,299 @@
-import { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
+import { useState } from 'react';
+import { Alert, Image, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
-import { Camera, MapPin } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import { Camera, ImagePlus, Send } from 'lucide-react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { PillarBadge } from '@/components/ui/PillarBadge';
 import { Screen } from '@/components/ui/Screen';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Text } from '@/components/ui/Text';
 import { TextInputField } from '@/components/ui/TextInputField';
 import { theme } from '@/components/ui/theme';
-import { useAuthStore } from '@/features/auth/auth-store';
-import { createPhotoEntry } from '@/features/entries/entry-service';
-import { ACTION_CATALOG, PILLAR_ORDER } from '@/lib/constants';
-import type { WellnessPillar } from '@/types/domain';
+import { PillarChip } from '@/components/entries/PillarChip';
+import { SubmitSuccessCard } from '@/components/entries/SubmitSuccessCard';
+import { VisibilitySelector } from '@/components/entries/VisibilitySelector';
+import { useAuth } from '@/features/auth/useAuth';
+import { createPhotoEntry } from '@/features/entries/entryService';
+import type {
+  EntryVisibility,
+  EntryWithScore,
+  WellnessPillar,
+} from '@/features/entries/types';
+import { PILLAR_ORDER } from '@/lib/constants';
+
+type ProofAsset = {
+  uri: string;
+  mimeType?: string | null;
+  base64?: string | null;
+  width?: number | null;
+  height?: number | null;
+};
+
+function inferPillar(value: string): WellnessPillar {
+  const text = value.toLowerCase();
+  if (/(gym|walk|run|lift|workout|steps|sport|hike)/.test(text)) return 'movement';
+  if (/(water|protein|meal|fuel|hydrate|nutrition|fast)/.test(text)) return 'fuel';
+  if (/(read|meditat|journal|study|mind|focus|therapy)/.test(text)) return 'mind';
+  if (/(sauna|stretch|sleep|mobility|cold|breath|recover)/.test(text)) return 'recovery';
+  return 'movement';
+}
+
+function firstAsset(result: ImagePicker.ImagePickerResult): ProofAsset | null {
+  if (result.canceled || result.assets.length === 0) {
+    return null;
+  }
+  const asset = result.assets[0];
+  return {
+    uri: asset.uri,
+    mimeType: asset.mimeType,
+    base64: asset.base64,
+    width: asset.width,
+    height: asset.height,
+  };
+}
 
 export default function CaptureScreen() {
-  const session = useAuthStore((state) => state.session);
-  const [pillar, setPillar] = useState<WellnessPillar>('movement');
-  const [actionType, setActionType] = useState(ACTION_CATALOG.movement[0].key);
+  const { session, profile } = useAuth();
+  const [asset, setAsset] = useState<ProofAsset | null>(null);
+  const [activity, setActivity] = useState('');
   const [caption, setCaption] = useState('');
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [withLocation, setWithLocation] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const action = useMemo(
-    () => ACTION_CATALOG[pillar].find((item) => item.key === actionType) ?? ACTION_CATALOG[pillar][0],
-    [actionType, pillar],
+  const [pillar, setPillar] = useState<WellnessPillar>('movement');
+  const [visibility, setVisibility] = useState<EntryVisibility>(
+    profile?.privacyDefault ?? 'friends',
   );
+  const [submitting, setSubmitting] = useState(false);
+  const [submittedEntry, setSubmittedEntry] = useState<EntryWithScore | null>(null);
 
-  async function openCamera() {
+  function handleActivityChange(value: string) {
+    setActivity(value);
+    if (value.trim()) {
+      setPillar(inferPillar(value));
+    }
+  }
+
+  async function takePhoto() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      setError('Camera permission is required to capture proof.');
+      Alert.alert('Camera permission needed', 'Allow camera access to capture proof.');
       return;
     }
 
     const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [4, 5],
-      quality: 0.86,
+      quality: 0.88,
+      base64: true,
     });
-
-    if (!result.canceled) {
-      setPhotoUri(result.assets[0].uri);
+    const picked = firstAsset(result);
+    if (picked) {
+      setAsset(picked);
+      await Haptics.selectionAsync();
     }
   }
 
-  async function handleCreate() {
-    if (!session || !photoUri) {
+  async function choosePhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photo permission needed', 'Allow photo access to choose proof.');
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    try {
-      let location: Record<string, unknown> | null = null;
-      if (withLocation) {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (permission.granted) {
-          const current = await Location.getCurrentPositionAsync({});
-          location = {
-            latitude: current.coords.latitude,
-            longitude: current.coords.longitude,
-            accuracy: current.coords.accuracy,
-          };
-        }
-      }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.88,
+      base64: true,
+    });
+    const picked = firstAsset(result);
+    if (picked) {
+      setAsset(picked);
+      await Haptics.selectionAsync();
+    }
+  }
 
+  async function handleSubmit() {
+    if (!session?.user.id) {
+      Alert.alert('Sign in required', 'Log in again before creating an entry.');
+      return;
+    }
+    if (!asset) {
+      Alert.alert('Add proof', 'Take or choose a photo first.');
+      return;
+    }
+    if (!activity.trim()) {
+      Alert.alert('Add an activity', 'Name what this proof shows.');
+      return;
+    }
+
+    setSubmitting(true);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
       const entry = await createPhotoEntry({
         userId: session.user.id,
-        pillar,
-        actionType: action.key,
-        title: action.label,
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        base64: asset.base64,
+        width: asset.width,
+        height: asset.height,
+        activityTag: activity,
         caption,
-        localUri: photoUri,
-        location,
+        wellnessPillar: pillar,
+        visibility,
       });
-      router.push(`/entry/${entry.id}`);
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : 'Could not score proof.');
+      setSubmittedEntry(entry);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert(
+        'Photo proof failed',
+        error instanceof Error ? error.message : 'The photo entry could not be saved.',
+      );
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
+  }
+
+  function resetForm() {
+    setSubmittedEntry(null);
+    setAsset(null);
+    setActivity('');
+    setCaption('');
+    setPillar('movement');
+  }
+
+  if (submittedEntry) {
+    return (
+      <Screen>
+        <SubmitSuccessCard
+          entry={submittedEntry}
+          onViewDay={() => router.replace('/(tabs)/home')}
+          onAddAnother={resetForm}
+        />
+      </Screen>
+    );
   }
 
   return (
     <Screen>
-      <Text variant="title">Capture proof</Text>
-      <Text muted>Photos are uploaded as proof, then scored by the server-side AI function.</Text>
+      <View style={styles.header}>
+        <Text variant="title">Capture proof</Text>
+        <Text muted>Photo evidence for the thing you actually did.</Text>
+      </View>
 
-      <Pressable onPress={openCamera} style={styles.camera}>
-        {photoUri ? (
-          <Image source={{ uri: photoUri }} style={styles.preview} />
+      <Card style={styles.previewCard}>
+        {asset ? (
+          <Image source={{ uri: asset.uri }} style={styles.preview} />
         ) : (
-          <View style={styles.cameraEmpty}>
-            <Camera size={32} color={theme.colors.ink} />
-            <Text variant="subtitle">Open camera</Text>
-            <Text muted>Gym plate, trail view, meal, journal, sauna, or any real proof.</Text>
+          <View style={styles.emptyPreview}>
+            <Camera size={38} color={theme.colors.primary} />
+            <Text variant="subtitle">Ready when you are</Text>
           </View>
         )}
-      </Pressable>
-
-      <Card style={styles.card}>
-        <SegmentedControl
-          value={pillar}
-          options={PILLAR_ORDER.map((item) => ({ value: item, label: item }))}
-          onChange={(next) => {
-            setPillar(next);
-            setActionType(ACTION_CATALOG[next][0].key);
-          }}
-        />
-        <View style={styles.actionGrid}>
-          {ACTION_CATALOG[pillar].map((item) => {
-            const active = item.key === actionType;
-            return (
-              <Pressable
-                key={item.key}
-                onPress={() => setActionType(item.key)}
-                style={[styles.action, active && styles.actionActive]}>
-                <Text variant="caption" style={active && styles.actionActiveText}>
-                  {item.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.photoActions}>
+          <Button onPress={takePhoto} style={styles.photoButton}>
+            <Camera size={18} color={theme.colors.white} />
+            Camera
+          </Button>
+          <Button variant="secondary" onPress={choosePhoto} style={styles.photoButton}>
+            <ImagePlus size={18} color={theme.colors.ink} />
+            Library
+          </Button>
         </View>
-        <PillarBadge pillar={pillar} />
       </Card>
 
-      <TextInputField
-        label="Caption"
-        value={caption}
-        onChangeText={setCaption}
-        placeholder="What did you complete?"
-      />
+      <Card style={styles.card}>
+        <TextInputField
+          label="Activity"
+          placeholder="Gym, walk, protein, meditation"
+          value={activity}
+          onChangeText={handleActivityChange}
+          autoCapitalize="words"
+          returnKeyType="done"
+        />
+        <TextInputField
+          label="Caption"
+          placeholder="What made it count?"
+          value={caption}
+          onChangeText={setCaption}
+          multiline
+          style={styles.captionInput}
+        />
+      </Card>
 
-      <Pressable onPress={() => setWithLocation((current) => !current)} style={styles.location}>
-        <MapPin size={18} color={withLocation ? theme.colors.accent : theme.colors.muted} />
-        <Text style={withLocation && styles.locationActive}>Attach location proof</Text>
-      </Pressable>
+      <Card style={styles.card}>
+        <Text variant="subtitle">Pillar</Text>
+        <View style={styles.pillars}>
+          {PILLAR_ORDER.map((item) => (
+            <PillarChip
+              key={item}
+              pillar={item}
+              selected={pillar === item}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setPillar(item);
+              }}
+            />
+          ))}
+        </View>
+      </Card>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button disabled={!photoUri} loading={loading} onPress={handleCreate}>
-        Score proof
+      <Card style={styles.card}>
+        <Text variant="subtitle">Visibility</Text>
+        <VisibilitySelector value={visibility} onChange={setVisibility} />
+      </Card>
+
+      <Button
+        loading={submitting}
+        disabled={!asset || !activity.trim()}
+        onPress={handleSubmit}>
+        <Send size={18} color={theme.colors.white} />
+        Submit proof
       </Button>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  camera: {
-    width: '100%',
-    aspectRatio: 0.86,
-    borderRadius: theme.radius.lg,
-    overflow: 'hidden',
-    backgroundColor: theme.colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.border,
+  header: {
+    gap: 6,
+  },
+  previewCard: {
+    gap: 12,
   },
   preview: {
     width: '100%',
-    height: '100%',
+    aspectRatio: 1,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surfaceAlt,
   },
-  cameraEmpty: {
-    flex: 1,
+  emptyPreview: {
+    minHeight: 280,
+    borderRadius: theme.radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 28,
     gap: 10,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  photoActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  photoButton: {
+    flex: 1,
   },
   card: {
     gap: 14,
   },
-  actionGrid: {
+  captionInput: {
+    minHeight: 92,
+    paddingTop: 14,
+    textAlignVertical: 'top',
+  },
+  pillars: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-  },
-  action: {
-    minHeight: 38,
-    borderRadius: theme.radius.sm,
-    paddingHorizontal: 10,
-    justifyContent: 'center',
-    backgroundColor: theme.colors.surfaceAlt,
-  },
-  actionActive: {
-    backgroundColor: theme.colors.ink,
-  },
-  actionActiveText: {
-    color: theme.colors.white,
-  },
-  location: {
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  locationActive: {
-    color: theme.colors.accent,
-  },
-  error: {
-    color: theme.colors.danger,
   },
 });
