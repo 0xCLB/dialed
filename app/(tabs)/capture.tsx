@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +14,11 @@ import { theme } from '@/components/ui/theme';
 import { PillarChip } from '@/components/entries/PillarChip';
 import { SubmitSuccessCard } from '@/components/entries/SubmitSuccessCard';
 import { VisibilitySelector } from '@/components/entries/VisibilitySelector';
+import { DailyProofCard } from '@/components/proofs/DailyProofCard';
+import { EarnMoreProofsCard } from '@/components/proofs/EarnMoreProofsCard';
+import { ProofBalancePill } from '@/components/proofs/ProofBalancePill';
+import { ProofSpendModal } from '@/components/proofs/ProofSpendModal';
+import { ProProofUpgradeCard } from '@/components/proofs/ProProofUpgradeCard';
 import { useAuth } from '@/features/auth/useAuth';
 import { createPhotoEntry } from '@/features/entries/entryService';
 import type {
@@ -21,6 +26,9 @@ import type {
   EntryWithScore,
   WellnessPillar,
 } from '@/features/entries/types';
+import { usePro } from '@/features/monetization/usePro';
+import { canSpendProof, getTodayProofWallet } from '@/features/proofs/proofService';
+import type { ProofWallet } from '@/features/proofs/types';
 import { PILLAR_ORDER } from '@/lib/constants';
 
 type ProofAsset = {
@@ -56,6 +64,7 @@ function firstAsset(result: ImagePicker.ImagePickerResult): ProofAsset | null {
 
 export default function CaptureScreen() {
   const { session, profile } = useAuth();
+  const pro = usePro();
   const [asset, setAsset] = useState<ProofAsset | null>(null);
   const [activity, setActivity] = useState('');
   const [caption, setCaption] = useState('');
@@ -63,8 +72,35 @@ export default function CaptureScreen() {
   const [visibility, setVisibility] = useState<EntryVisibility>(
     profile?.privacyDefault ?? 'friends',
   );
+  const [proofWallet, setProofWallet] = useState<ProofWallet | null>(null);
+  const [proofLoading, setProofLoading] = useState(true);
+  const [proofModalVisible, setProofModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedEntry, setSubmittedEntry] = useState<EntryWithScore | null>(null);
+  const hasProAccess = Boolean(pro.isPro || profile?.isPro);
+
+  const refreshProofWallet = useCallback(async () => {
+    if (!session?.user.id) {
+      setProofWallet(null);
+      setProofLoading(false);
+      return null;
+    }
+
+    setProofLoading(true);
+    try {
+      const wallet = await getTodayProofWallet(session.user.id, { isPro: hasProAccess });
+      setProofWallet(wallet);
+      return wallet;
+    } catch {
+      return null;
+    } finally {
+      setProofLoading(false);
+    }
+  }, [hasProAccess, session?.user.id]);
+
+  useEffect(() => {
+    refreshProofWallet();
+  }, [refreshProofWallet]);
 
   function handleActivityChange(value: string) {
     setActivity(value);
@@ -113,7 +149,7 @@ export default function CaptureScreen() {
     }
   }
 
-  async function handleSubmit() {
+  async function handleUseProofPress() {
     if (!session?.user.id) {
       Alert.alert('Sign in required', 'Log in again before creating an entry.');
       return;
@@ -127,6 +163,18 @@ export default function CaptureScreen() {
       return;
     }
 
+    const proofCheck = await canSpendProof(session.user.id, { isPro: hasProAccess });
+    setProofWallet(proofCheck.wallet);
+    setProofModalVisible(true);
+  }
+
+  async function handleSubmit() {
+    if (!session?.user.id || !asset) {
+      Alert.alert('Proof missing', 'Take or choose a photo before submitting.');
+      return;
+    }
+
+    setProofModalVisible(false);
     setSubmitting(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -143,8 +191,10 @@ export default function CaptureScreen() {
         visibility,
       });
       setSubmittedEntry(entry);
+      await refreshProofWallet();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
+      await refreshProofWallet();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
         'Photo proof failed',
@@ -153,6 +203,16 @@ export default function CaptureScreen() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function openEarnMore() {
+    setProofModalVisible(false);
+    router.push('/(tabs)/home');
+  }
+
+  function openUpgrade() {
+    setProofModalVisible(false);
+    pro.openPaywall('settings');
   }
 
   function resetForm() {
@@ -166,8 +226,10 @@ export default function CaptureScreen() {
   if (submittedEntry) {
     return (
       <Screen>
+        <ProofBalancePill wallet={proofWallet} loading={proofLoading} />
         <SubmitSuccessCard
           entry={submittedEntry}
+          proofWallet={proofWallet}
           onViewDay={() => router.replace('/(tabs)/home')}
           onAddAnother={resetForm}
         />
@@ -180,7 +242,15 @@ export default function CaptureScreen() {
       <View style={styles.header}>
         <Text variant="title">Capture proof</Text>
         <Text muted>Photo evidence for the thing you actually did.</Text>
+        <ProofBalancePill wallet={proofWallet} loading={proofLoading} />
       </View>
+
+      <DailyProofCard
+        wallet={proofWallet}
+        loading={proofLoading}
+        onEarnMore={openEarnMore}
+        onUpgrade={openUpgrade}
+      />
 
       <Card style={styles.previewCard}>
         {asset ? (
@@ -244,13 +314,29 @@ export default function CaptureScreen() {
         <VisibilitySelector value={visibility} onChange={setVisibility} />
       </Card>
 
+      {proofWallet?.remainingProofs === 0 || proofWallet?.setupRequired ? (
+        <>
+          <EarnMoreProofsCard onShare={openEarnMore} onInvite={() => router.push('/friends')} />
+          {!hasProAccess ? <ProProofUpgradeCard onPress={openUpgrade} /> : null}
+        </>
+      ) : null}
+
       <Button
         loading={submitting}
         disabled={!asset || !activity.trim()}
-        onPress={handleSubmit}>
+        onPress={handleUseProofPress}>
         <Send size={18} color={theme.colors.white} />
-        Submit proof
+        Use a Proof
       </Button>
+      <ProofSpendModal
+        visible={proofModalVisible}
+        wallet={proofWallet}
+        loading={submitting}
+        onConfirm={handleSubmit}
+        onClose={() => setProofModalVisible(false)}
+        onEarnMore={openEarnMore}
+        onUpgrade={openUpgrade}
+      />
     </Screen>
   );
 }

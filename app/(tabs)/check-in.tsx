@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +14,11 @@ import { PillarChip } from '@/components/entries/PillarChip';
 import { QuickPickGrid, type QuickPick } from '@/components/entries/QuickPickGrid';
 import { SubmitSuccessCard } from '@/components/entries/SubmitSuccessCard';
 import { VisibilitySelector } from '@/components/entries/VisibilitySelector';
+import { DailyProofCard } from '@/components/proofs/DailyProofCard';
+import { EarnMoreProofsCard } from '@/components/proofs/EarnMoreProofsCard';
+import { ProofBalancePill } from '@/components/proofs/ProofBalancePill';
+import { ProofSpendModal } from '@/components/proofs/ProofSpendModal';
+import { ProProofUpgradeCard } from '@/components/proofs/ProProofUpgradeCard';
 import { useAuth } from '@/features/auth/useAuth';
 import { createManualEntry } from '@/features/entries/entryService';
 import type {
@@ -21,6 +26,9 @@ import type {
   EntryWithScore,
   WellnessPillar,
 } from '@/features/entries/types';
+import { usePro } from '@/features/monetization/usePro';
+import { canSpendProof, getTodayProofWallet } from '@/features/proofs/proofService';
+import type { ProofWallet } from '@/features/proofs/types';
 import { PILLAR_ORDER } from '@/lib/constants';
 
 const QUICK_PICKS: QuickPick[] = [
@@ -45,6 +53,7 @@ function inferPillar(value: string): WellnessPillar {
 
 export default function CheckInScreen() {
   const { session, profile } = useAuth();
+  const pro = usePro();
   const [selectedPick, setSelectedPick] = useState<QuickPick | null>(QUICK_PICKS[0]);
   const [customActivity, setCustomActivity] = useState('');
   const [caption, setCaption] = useState('');
@@ -52,13 +61,40 @@ export default function CheckInScreen() {
   const [visibility, setVisibility] = useState<EntryVisibility>(
     profile?.privacyDefault ?? 'friends',
   );
+  const [proofWallet, setProofWallet] = useState<ProofWallet | null>(null);
+  const [proofLoading, setProofLoading] = useState(true);
+  const [proofModalVisible, setProofModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedEntry, setSubmittedEntry] = useState<EntryWithScore | null>(null);
+  const hasProAccess = Boolean(pro.isPro || profile?.isPro);
 
   const activityTag = useMemo(
     () => customActivity.trim() || selectedPick?.activityTag || '',
     [customActivity, selectedPick],
   );
+
+  const refreshProofWallet = useCallback(async () => {
+    if (!session?.user.id) {
+      setProofWallet(null);
+      setProofLoading(false);
+      return null;
+    }
+
+    setProofLoading(true);
+    try {
+      const wallet = await getTodayProofWallet(session.user.id, { isPro: hasProAccess });
+      setProofWallet(wallet);
+      return wallet;
+    } catch {
+      return null;
+    } finally {
+      setProofLoading(false);
+    }
+  }, [hasProAccess, session?.user.id]);
+
+  useEffect(() => {
+    refreshProofWallet();
+  }, [refreshProofWallet]);
 
   function handleQuickPick(pick: QuickPick) {
     Haptics.selectionAsync();
@@ -75,7 +111,7 @@ export default function CheckInScreen() {
     }
   }
 
-  async function handleSubmit() {
+  async function handleUseProofPress() {
     if (!session?.user.id) {
       Alert.alert('Sign in required', 'Log in again before creating an entry.');
       return;
@@ -86,6 +122,18 @@ export default function CheckInScreen() {
       return;
     }
 
+    const proofCheck = await canSpendProof(session.user.id, { isPro: hasProAccess });
+    setProofWallet(proofCheck.wallet);
+    setProofModalVisible(true);
+  }
+
+  async function handleSubmit() {
+    if (!session?.user.id) {
+      Alert.alert('Sign in required', 'Log in again before creating an entry.');
+      return;
+    }
+
+    setProofModalVisible(false);
     setSubmitting(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -97,8 +145,10 @@ export default function CheckInScreen() {
         visibility,
       });
       setSubmittedEntry(entry);
+      await refreshProofWallet();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
+      await refreshProofWallet();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
         'Check-in failed',
@@ -107,6 +157,16 @@ export default function CheckInScreen() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function openEarnMore() {
+    setProofModalVisible(false);
+    router.push('/(tabs)/home');
+  }
+
+  function openUpgrade() {
+    setProofModalVisible(false);
+    pro.openPaywall('settings');
   }
 
   function resetForm() {
@@ -120,8 +180,10 @@ export default function CheckInScreen() {
   if (submittedEntry) {
     return (
       <Screen>
+        <ProofBalancePill wallet={proofWallet} loading={proofLoading} />
         <SubmitSuccessCard
           entry={submittedEntry}
+          proofWallet={proofWallet}
           onViewDay={() => router.replace('/(tabs)/home')}
           onAddAnother={resetForm}
         />
@@ -134,7 +196,15 @@ export default function CheckInScreen() {
       <View style={styles.header}>
         <Text variant="title">Manual check-in</Text>
         <Text muted>Log the healthy thing while it is still fresh.</Text>
+        <ProofBalancePill wallet={proofWallet} loading={proofLoading} />
       </View>
+
+      <DailyProofCard
+        wallet={proofWallet}
+        loading={proofLoading}
+        onEarnMore={openEarnMore}
+        onUpgrade={openUpgrade}
+      />
 
       <Card style={styles.card}>
         <Text variant="subtitle">Quick picks</Text>
@@ -186,10 +256,26 @@ export default function CheckInScreen() {
         <VisibilitySelector value={visibility} onChange={setVisibility} />
       </Card>
 
-      <Button loading={submitting} disabled={!activityTag.trim()} onPress={handleSubmit}>
+      {proofWallet?.remainingProofs === 0 || proofWallet?.setupRequired ? (
+        <>
+          <EarnMoreProofsCard onShare={openEarnMore} onInvite={() => router.push('/friends')} />
+          {!hasProAccess ? <ProProofUpgradeCard onPress={openUpgrade} /> : null}
+        </>
+      ) : null}
+
+      <Button loading={submitting} disabled={!activityTag.trim()} onPress={handleUseProofPress}>
         <Send size={18} color={theme.colors.white} />
-        Submit check-in
+        Use a Proof
       </Button>
+      <ProofSpendModal
+        visible={proofModalVisible}
+        wallet={proofWallet}
+        loading={submitting}
+        onConfirm={handleSubmit}
+        onClose={() => setProofModalVisible(false)}
+        onEarnMore={openEarnMore}
+        onUpgrade={openUpgrade}
+      />
     </Screen>
   );
 }

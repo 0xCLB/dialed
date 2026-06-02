@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowLeft, Bell, Crown, HeartPulse, Lock, LogOut } from 'lucide-react-native';
@@ -12,16 +12,36 @@ import { theme } from '@/components/ui/theme';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { signOut } from '@/features/auth/auth-service';
 import { useRequireSession } from '@/features/auth/useRequireSession';
+import { useDiagnosticsStore } from '@/features/dev/diagnosticsStore';
 import { usePro } from '@/features/monetization/usePro';
+import { getTodayProofWallet } from '@/features/proofs/proofService';
+import type { ProofWallet } from '@/features/proofs/types';
+import { env, isSupabaseConfigured } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 
 export default function SettingsScreen() {
   useRequireSession();
+  const session = useAuthStore((state) => state.session);
   const profile = useAuthStore((state) => state.profile);
+  const authError = useAuthStore((state) => state.error);
+  const lastEntryInsertError = useDiagnosticsStore((state) => state.lastEntryInsertError);
+  const lastScoringError = useDiagnosticsStore((state) => state.lastScoringError);
   const refreshProfile = useAuthStore((state) => state.refreshProfile);
   const pro = usePro();
   const [privateMode, setPrivateMode] = useState(Boolean(profile?.isPrivate));
   const [saving, setSaving] = useState(false);
+  const [proofWallet, setProofWallet] = useState<ProofWallet | null>(null);
+
+  useEffect(() => {
+    if (env.appEnv === 'production' || !session?.user.id) {
+      setProofWallet(null);
+      return;
+    }
+
+    getTodayProofWallet(session.user.id, { isPro: Boolean(pro.isPro || profile?.isPro) })
+      .then(setProofWallet)
+      .catch(() => setProofWallet(null));
+  }, [profile?.isPro, pro.isPro, session?.user.id]);
 
   async function togglePrivate() {
     if (!profile) {
@@ -33,7 +53,7 @@ export default function SettingsScreen() {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ is_private: next })
+        .update({ privacy_default: next ? 'private' : 'friends' })
         .eq('id', profile.id);
       if (error) {
         throw error;
@@ -129,6 +149,80 @@ export default function SettingsScreen() {
         </Button>
       </Card>
 
+      {env.appEnv !== 'production' ? (
+        <Card style={styles.card}>
+          <Text variant="subtitle">Dev Diagnostics</Text>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              User
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {session?.user.id ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Profile
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {profile ? 'loaded' : 'missing'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Supabase
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {isSupabaseConfigured ? 'configured' : 'missing env'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Storage
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              remote buckets verified
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Proof wallet
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {proofWallet
+                ? proofWallet.setupRequired
+                  ? 'setup required'
+                  : `${proofWallet.remainingProofs} left`
+                : 'not loaded'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Auth error
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {authError ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Entry error
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {lastEntryInsertError ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Scoring error
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {lastScoringError ?? 'none'}
+            </Text>
+          </View>
+        </Card>
+      ) : null}
+
       <Button variant="danger" onPress={handleSignOut}>
         <LogOut size={18} color={theme.colors.danger} /> Sign out
       </Button>
@@ -184,5 +278,15 @@ const styles = StyleSheet.create({
   },
   knobActive: {
     transform: [{ translateX: 22 }],
+  },
+  diagnosticRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  diagnosticValue: {
+    flex: 1,
+    textAlign: 'right',
   },
 });

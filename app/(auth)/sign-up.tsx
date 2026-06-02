@@ -60,7 +60,9 @@ export default function SignUpScreen() {
         <UserRoundPlus size={28} color={theme.colors.white} />
       </View>
       <Text variant="title">Create your Dialed account</Text>
-      <Text muted>Email/password is the active dev auth path so you can test the full product loop now.</Text>
+      <Text muted>
+        A daily status game for becoming your best self. Prove your day. Get your Dialed Score. Beat your friends.
+      </Text>
 
       <Card style={styles.form}>
         <TextInputField

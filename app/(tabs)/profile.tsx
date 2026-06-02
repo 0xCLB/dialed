@@ -337,8 +337,11 @@ export default function ProfileScreen() {
           </View>
           {entries.length === 0 ? (
             <Card style={styles.card}>
-              <Text variant="subtitle">No proofs yet</Text>
-              <Text muted>Your first check-in will land here.</Text>
+              <Text variant="subtitle">Build your first Dialed Day.</Text>
+              <Text muted>Your first proof will land here and start the story.</Text>
+              <Button onPress={() => router.push('/first-proof')}>
+                Log first proof
+              </Button>
             </Card>
           ) : (
             entries.map((entry) => <EntryCard key={entry.id} entry={entry} />)

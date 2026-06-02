@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { CheckCircle2, Clock3 } from 'lucide-react-native';
+import { CheckCircle2, Clock3, Sparkles, Ticket } from 'lucide-react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -11,18 +11,23 @@ import { ShareCTAButton } from '@/components/sharing/ShareCTAButton';
 import { SharePreviewModal } from '@/components/sharing/SharePreviewModal';
 import { buildEntryShareData } from '@/features/sharing/shareDataService';
 import type { EntryWithScore } from '@/features/entries/types';
+import type { ProofWallet } from '@/features/proofs/types';
 import type { ShareCardData } from '@/features/sharing/types';
+import { PILLARS } from '@/lib/constants';
 
 export function SubmitSuccessCard({
   entry,
+  proofWallet,
   onViewDay,
   onAddAnother,
 }: {
   entry: EntryWithScore;
+  proofWallet?: ProofWallet | null;
   onViewDay: () => void;
   onAddAnother: () => void;
 }) {
   const scored = Boolean(entry.score);
+  const pillar = entry.score?.wellnessPillar ?? entry.wellnessPillar;
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
 
@@ -46,10 +51,44 @@ export function SubmitSuccessCard({
           <Text muted style={styles.centerText}>
             {scored
               ? entry.score?.aiSubtext ?? 'That one counted. Your day just got louder.'
-              : 'Scoring is warming up. Your entry is safely pending.'}
+              : 'Scoring is warming up. Your entry is safely pending. Proof > promises.'}
           </Text>
         </View>
         <PointsBadge points={entry.score?.points} pending={!scored} />
+        <View style={styles.rewardGrid}>
+          <View style={styles.rewardTile}>
+            <Sparkles size={17} color={theme.colors.primary} />
+            <Text variant="caption" muted>
+              Pillar
+            </Text>
+            <Text variant="subtitle" style={styles.rewardValue}>
+              {pillar ? PILLARS[pillar].label : 'Pending'}
+            </Text>
+          </View>
+          <View style={styles.rewardTile}>
+            <Ticket size={17} color={theme.colors.primary} />
+            <Text variant="caption" muted>
+              Daily Proof
+            </Text>
+            <Text variant="subtitle" style={styles.rewardValue}>
+              -1 spent
+            </Text>
+          </View>
+          <View style={styles.rewardTile}>
+            <Ticket size={17} color={theme.colors.primary} />
+            <Text variant="caption" muted>
+              Remaining
+            </Text>
+            <Text variant="subtitle" style={styles.rewardValue}>
+              {proofWallet?.setupRequired ? 'Setup' : proofWallet?.remainingProofs ?? '-'}
+            </Text>
+          </View>
+        </View>
+        <Text variant="caption" muted style={styles.centerText}>
+          {scored
+            ? 'Score moved. One proof can move you up.'
+            : 'Score movement posts when the scoring function lands.'}
+        </Text>
         <View style={styles.actions}>
           <ShareCTAButton label="Share this proof" onPress={handleShare} />
           <Button onPress={onViewDay} style={styles.actionButton}>
@@ -97,6 +136,23 @@ const styles = StyleSheet.create({
   actions: {
     width: '100%',
     gap: 10,
+  },
+  rewardGrid: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  rewardTile: {
+    flex: 1,
+    minHeight: 92,
+    borderRadius: theme.radius.md,
+    padding: 10,
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  rewardValue: {
+    color: theme.colors.primaryDark,
   },
   actionButton: {
     width: '100%',

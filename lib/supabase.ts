@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
-import { assertSupabaseEnv, env } from '@/lib/env';
+import { env } from '@/lib/env';
 
 const memoryStorage = new Map<string, string>();
 
@@ -31,9 +31,10 @@ const ssrSafeWebStorage = {
   },
 };
 
-assertSupabaseEnv();
+const supabaseUrl = env.supabaseUrl || 'https://missing-supabase-url.supabase.co';
+const supabaseAnonKey = env.supabaseAnonKey || 'missing-supabase-anon-key';
 
-export const supabase = createClient(env.supabaseUrl, env.supabaseAnonKey, {
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: Platform.OS === 'web' ? ssrSafeWebStorage : AsyncStorage,
     autoRefreshToken: true,

@@ -9,12 +9,14 @@ import {
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Ticket,
 } from 'lucide-react-native';
 import type { PurchasesPackage } from 'react-native-purchases';
 
 import { PackageCard } from '@/components/monetization/PackageCard';
 import { PaywallBenefitRow } from '@/components/monetization/PaywallBenefitRow';
 import { ProBadge } from '@/components/monetization/ProBadge';
+import { ProofBalancePill } from '@/components/proofs/ProofBalancePill';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LoadingState } from '@/components/ui/StateViews';
@@ -24,12 +26,19 @@ import { theme } from '@/components/ui/theme';
 import { useRequireSession } from '@/features/auth/useRequireSession';
 import { usePro } from '@/features/monetization/usePro';
 import type { PaywallPlacement } from '@/features/monetization/types';
+import { getTodayProofWallet } from '@/features/proofs/proofService';
+import type { ProofWallet } from '@/features/proofs/types';
 import { track } from '@/lib/analytics';
 
 const BENEFITS = [
   {
+    title: '20 Daily Proofs',
+    body: 'More ways to prove the day without turning the leaderboard into a wallet contest.',
+    icon: <Ticket size={18} color={theme.colors.primary} />,
+  },
+  {
     title: 'Premium AI insights',
-    body: 'Deeper scoring explanations without turning the app into homework.',
+    body: 'Deeper scoring. Better context. Still action-based, never medical.',
     icon: <Brain size={18} color={theme.colors.primary} />,
   },
   {
@@ -80,7 +89,7 @@ function placementValue(value: unknown): PaywallPlacement {
 }
 
 export default function PaywallScreen() {
-  useRequireSession();
+  const { session } = useRequireSession();
   const params = useLocalSearchParams();
   const placement = placementValue(params.placement);
   const {
@@ -97,6 +106,7 @@ export default function PaywallScreen() {
   const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [proofWallet, setProofWallet] = useState<ProofWallet | null>(null);
 
   useEffect(() => {
     track('paywall_viewed', { placement });
@@ -106,6 +116,11 @@ export default function PaywallScreen() {
     if (packages.length === 0) return;
     setSelectedPackage((current) => current ?? packages.find((pkg) => pkg.packageType === 'ANNUAL') ?? packages[0]);
   }, [packages]);
+
+  useEffect(() => {
+    if (!session?.user.id) return;
+    getTodayProofWallet(session.user.id, { isPro }).then(setProofWallet).catch(() => setProofWallet(null));
+  }, [isPro, session?.user.id]);
 
   const statusCopy = useMemo(() => {
     if (isPro) return 'Dialed Pro is active.';
@@ -160,9 +175,9 @@ export default function PaywallScreen() {
       </View>
 
       <View style={styles.hero}>
-        <Text variant="hero">Become dangerously consistent.</Text>
+        <Text variant="hero">More ways to prove the day.</Text>
         <Text muted>
-          Dialed Pro adds sharper intelligence and premium exports for people who want the app to keep up.
+          Deeper scoring. Better artifacts. More capacity. Free competition still stays fair.
         </Text>
       </View>
 
@@ -174,6 +189,10 @@ export default function PaywallScreen() {
             <Text muted>{statusCopy}</Text>
           </View>
         </View>
+        <Text variant="caption" muted>
+          Free gets limited Daily Proofs, basic scoring, and the daily leaderboard. Pro adds capacity, health auto-scoring, premium templates, deeper digest, and advanced filters.
+        </Text>
+        <ProofBalancePill wallet={proofWallet} loading={loading} />
       </Card>
 
       <Card style={styles.card}>

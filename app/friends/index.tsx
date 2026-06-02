@@ -208,7 +208,10 @@ export default function FriendsScreen() {
           </View>
 
           {friends.length === 0 ? (
-            <EmptyState title="No friends yet" body="Search for a username to start competing." />
+            <EmptyState
+              title="Dialed is better with rivals."
+              body="Search for a username, add a friend, and make the leaderboard mean something."
+            />
           ) : (
             friends.map((friendship) => (
               <FriendListItem

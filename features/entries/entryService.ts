@@ -4,6 +4,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import { STORAGE_BUCKETS } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
+import { clearEntryInsertError, noteEntryInsertError } from '@/features/dev/diagnosticsStore';
+import { canSpendProof, spendProofForEntry } from '@/features/proofs/proofService';
 import { scoreEntry, type ScoreEntryResult } from '@/features/scoring/scoringService';
 import type {
   CreateManualEntryInput,
@@ -129,6 +131,11 @@ function dateWindow(date: string | Date) {
 function normalizeOptional(value?: string | null, maxLength = 1000) {
   const trimmed = value?.trim();
   return trimmed ? trimmed.slice(0, maxLength) : null;
+}
+
+function shouldSpendProof(metadata?: Record<string, unknown>) {
+  const consumption = metadata?.proof_consumption;
+  return consumption !== 'free' && consumption !== 'system' && metadata?.free_proof !== true;
 }
 
 function mapEntry(row: EntryRow): Entry {
@@ -366,9 +373,19 @@ export async function createManualEntry(input: CreateManualEntryInput) {
     throw new Error('Pick or enter an activity before submitting.');
   }
 
-  const { data, error } = await supabase
+  const consumesProof = shouldSpendProof(input.metadata);
+  if (consumesProof) {
+    const proofCheck = await canSpendProof(input.userId);
+    if (!proofCheck.canSpend) {
+      throw new Error(proofCheck.reason ?? "You're out of Daily Proofs.");
+    }
+  }
+
+  const entryId = Crypto.randomUUID();
+  const { error } = await supabase
     .from('entries')
     .insert({
+      id: entryId,
       user_id: input.userId,
       entry_type: 'manual',
       activity_tag: activityTag,
@@ -385,16 +402,26 @@ export async function createManualEntry(input: CreateManualEntryInput) {
         entry_engine_version: 1,
         capture_surface: 'manual_check_in',
       },
-    })
-    .select('*')
-    .single();
+    });
 
   if (error) {
+    noteEntryInsertError(error);
     throw error;
   }
 
-  await requestEntryScore((data as EntryRow).id);
-  return getEntryWithScore((data as EntryRow).id);
+  if (consumesProof) {
+    try {
+      await spendProofForEntry(entryId);
+    } catch (proofError) {
+      await supabase.from('entries').delete().eq('id', entryId).eq('user_id', input.userId);
+      noteEntryInsertError(proofError);
+      throw proofError;
+    }
+  }
+
+  await requestEntryScore(entryId);
+  clearEntryInsertError();
+  return getEntryWithScore(entryId);
 }
 
 function imageExtension(mimeType?: string | null) {
@@ -421,7 +448,20 @@ export async function uploadEntryPhoto(input: UploadEntryPhotoInput) {
   const objectPath = `${input.userId}/${input.entryId}/${mediaId}.${extension}`;
   const storagePath = `${STORAGE_BUCKETS.entryProofs}/${objectPath}`;
 
-  const { data: mediaRow, error: mediaError } = await supabase
+  const mediaRow: EntryMediaRow = {
+    id: mediaId,
+    entry_id: input.entryId,
+    user_id: input.userId,
+    bucket_id: STORAGE_BUCKETS.entryProofs,
+    storage_path: storagePath,
+    media_kind: 'proof',
+    mime_type: mimeType,
+    width: input.width ?? null,
+    height: input.height ?? null,
+    created_at: new Date().toISOString(),
+  };
+
+  const { error: mediaError } = await supabase
     .from('entry_media')
     .insert({
       id: mediaId,
@@ -433,11 +473,10 @@ export async function uploadEntryPhoto(input: UploadEntryPhotoInput) {
       mime_type: mimeType,
       width: input.width ?? null,
       height: input.height ?? null,
-    })
-    .select('*')
-    .single();
+    });
 
   if (mediaError) {
+    noteEntryInsertError(mediaError);
     throw mediaError;
   }
 
@@ -456,10 +495,11 @@ export async function uploadEntryPhoto(input: UploadEntryPhotoInput) {
 
   if (uploadError) {
     await supabase.from('entry_media').delete().eq('id', mediaId).eq('user_id', input.userId);
+    noteEntryInsertError(uploadError);
     throw uploadError;
   }
 
-  return getSignedMedia(mediaRow as EntryMediaRow);
+  return getSignedMedia(mediaRow);
 }
 
 export async function createPhotoEntry(input: CreatePhotoEntryInput) {
@@ -470,9 +510,19 @@ export async function createPhotoEntry(input: CreatePhotoEntryInput) {
     throw new Error('Add an activity before submitting photo proof.');
   }
 
-  const { data, error } = await supabase
+  const consumesProof = shouldSpendProof(input.metadata);
+  if (consumesProof) {
+    const proofCheck = await canSpendProof(input.userId);
+    if (!proofCheck.canSpend) {
+      throw new Error(proofCheck.reason ?? "You're out of Daily Proofs.");
+    }
+  }
+
+  const entryId = Crypto.randomUUID();
+  const { error } = await supabase
     .from('entries')
     .insert({
+      id: entryId,
       user_id: input.userId,
       entry_type: 'photo',
       activity_tag: activityTag,
@@ -489,18 +539,16 @@ export async function createPhotoEntry(input: CreatePhotoEntryInput) {
         entry_engine_version: 1,
         capture_surface: 'photo_proof',
       },
-    })
-    .select('*')
-    .single();
+    });
 
   if (error) {
+    noteEntryInsertError(error);
     throw error;
   }
 
-  const entryId = (data as EntryRow).id;
-
+  let uploadedMedia: EntryMedia;
   try {
-    await uploadEntryPhoto({
+    uploadedMedia = await uploadEntryPhoto({
       userId: input.userId,
       entryId,
       uri: input.uri,
@@ -511,10 +559,26 @@ export async function createPhotoEntry(input: CreatePhotoEntryInput) {
     });
   } catch (uploadError) {
     await supabase.from('entries').delete().eq('id', entryId).eq('user_id', input.userId);
+    noteEntryInsertError(uploadError);
     throw uploadError;
   }
 
+  if (consumesProof) {
+    try {
+      await spendProofForEntry(entryId);
+    } catch (proofError) {
+      await supabase.storage
+        .from(STORAGE_BUCKETS.entryProofs)
+        .remove([uploadedMedia.objectPath])
+        .catch(() => undefined);
+      await supabase.from('entries').delete().eq('id', entryId).eq('user_id', input.userId);
+      noteEntryInsertError(proofError);
+      throw proofError;
+    }
+  }
+
   await requestEntryScore(entryId);
+  clearEntryInsertError();
   return getEntryWithScore(entryId);
 }
 

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { noteScoringError } from '@/features/dev/diagnosticsStore';
 import type { WellnessPillar } from '@/features/entries/types';
 
 export type ScoreEntryResponse = {
@@ -27,7 +28,9 @@ export type ScoreEntryResult =
       status?: number;
     };
 
-function classifyFunctionError(error: unknown): ScoreEntryResult {
+type ScoreEntryFailure = Extract<ScoreEntryResult, { ok: false }>;
+
+function classifyFunctionError(error: unknown): ScoreEntryFailure {
   const message = error instanceof Error ? error.message : 'Scoring request failed.';
   const status =
     typeof error === 'object' && error && 'context' in error
@@ -87,10 +90,13 @@ export async function scoreEntry(entryId: string): Promise<ScoreEntryResult> {
     });
 
     if (error) {
-      return classifyFunctionError(error);
+      const result = classifyFunctionError(error);
+      noteScoringError(result.message);
+      return result;
     }
 
     if (!data?.entry_id) {
+      noteScoringError('Scoring returned an empty response. Your entry is saved and waiting.');
       return {
         ok: false,
         reason: 'server',
@@ -98,9 +104,12 @@ export async function scoreEntry(entryId: string): Promise<ScoreEntryResult> {
       };
     }
 
+    noteScoringError(null);
     return { ok: true, data };
   } catch (error) {
-    return classifyFunctionError(error);
+    const result = classifyFunctionError(error);
+    noteScoringError(result.message);
+    return result;
   }
 }
 

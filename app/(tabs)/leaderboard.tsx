@@ -125,7 +125,7 @@ export default function LeaderboardScreen() {
       {!loading && !error && rows.length === 0 ? (
         <EmptyState
           title="Add friends to compete"
-          body="Your friend leaderboard lights up after accepted friends score daily points."
+          body="Kyle is already on the board somewhere. Add friends, score points, and make this personal."
           action="Find friends"
           onAction={() => router.push('/friends')}
         />

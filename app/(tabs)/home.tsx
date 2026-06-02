@@ -15,6 +15,10 @@ import { DaySummaryCard } from '@/components/progress/DaySummaryCard';
 import { FullyDialedBanner } from '@/components/progress/FullyDialedBanner';
 import { PillarProgressCard } from '@/components/progress/PillarProgressCard';
 import { StreakCard } from '@/components/progress/StreakCard';
+import { DailyProofCard } from '@/components/proofs/DailyProofCard';
+import { EarnMoreProofsCard } from '@/components/proofs/EarnMoreProofsCard';
+import { ProofBalancePill } from '@/components/proofs/ProofBalancePill';
+import { ProProofUpgradeCard } from '@/components/proofs/ProProofUpgradeCard';
 import { FriendFeedCard } from '@/components/social/FriendFeedCard';
 import { ShareCTAButton } from '@/components/sharing/ShareCTAButton';
 import { SharePreviewModal } from '@/components/sharing/SharePreviewModal';
@@ -34,6 +38,12 @@ import {
 } from '@/features/progress/progressService';
 import type { DailyScore, DaySummary, Streak, WellnessPillar } from '@/features/progress/types';
 import {
+  earnBonusProof,
+  getTodayProofWallet,
+  nextDateKey,
+} from '@/features/proofs/proofService';
+import type { ProofWallet } from '@/features/proofs/types';
+import {
   getFriendFeed,
   reactToEntry,
   removeReaction,
@@ -51,7 +61,7 @@ const SUGGESTIONS: Record<WellnessPillar, string> = {
   movement: 'Movement is quiet. A 10-minute walk counts.',
   fuel: 'Fuel is untouched. Water counts.',
   mind: 'Mind is untouched. Read for 10 minutes.',
-  recovery: 'Recovery is lagging. Stretch for 8 points.',
+  recovery: 'Your Recovery pillar is ghosting. Stretch for 8 points.',
 };
 
 export default function HomeScreen() {
@@ -60,6 +70,7 @@ export default function HomeScreen() {
   const [entries, setEntries] = useState<EntryWithScore[]>([]);
   const [friendFeed, setFriendFeed] = useState<FriendFeedItem[]>([]);
   const [dailyScore, setDailyScore] = useState<DailyScore | null>(null);
+  const [proofWallet, setProofWallet] = useState<ProofWallet | null>(null);
   const [healthSummary, setHealthSummary] = useState<HealthTodaySummary | null>(null);
   const [digest, setDigest] = useState<DailyDigest | null>(null);
   const [streak, setStreak] = useState<Streak | null>(null);
@@ -85,14 +96,18 @@ export default function HomeScreen() {
     setError(null);
 
     try {
-      const [todayEntries, todayScore, userStreak, todayHealthSummary] = await Promise.all([
+      const [todayEntries, todayScore, userStreak, todayHealthSummary, wallet] = await Promise.all([
         getTodayEntries(session.user.id),
         getTodayScore(session.user.id),
         getUserStreak(session.user.id),
         getTodayHealthSummary(session.user.id).catch(() => null),
+        getTodayProofWallet(session.user.id, {
+          isPro: Boolean(pro.isPro || profile?.isPro),
+        }).catch(() => null),
       ]);
       setEntries(todayEntries);
       setDailyScore(todayScore);
+      setProofWallet(wallet);
       setStreak(userStreak);
       setHealthSummary(todayHealthSummary);
       setDigestError(null);
@@ -108,7 +123,7 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [session?.user.id]);
+  }, [profile?.isPro, pro.isPro, session?.user.id]);
 
   useEffect(() => {
     load();
@@ -119,6 +134,42 @@ export default function HomeScreen() {
     [dailyScore, entries],
   );
   const missingPillars = summary.pillarProgress.filter((pillar) => !pillar.completed);
+  const nextBestAction =
+    missingPillars.length > 0
+      ? SUGGESTIONS[missingPillars[0].pillar]
+      : 'Fully Dialed Day still possible tomorrow. Protect the streak.';
+  const competitionCopy =
+    friendFeed.length > 0
+      ? `${friendFeed[0].profile.displayName} is already on the board.`
+      : 'One proof can move you up.';
+
+  useEffect(() => {
+    if (!session?.user.id || loading) {
+      return;
+    }
+
+    const tomorrow = nextDateKey();
+    if (summary.fullyDialed) {
+      earnBonusProof('fully_dialed_tomorrow', {
+        proofDate: tomorrow,
+        metadata: { source: 'home', completed_pillars: 4 },
+      }).catch(() => null);
+    }
+    if ((streak?.currentStreak ?? 0) >= 3) {
+      earnBonusProof('three_day_streak_tomorrow', {
+        proofDate: tomorrow,
+        metadata: { source: 'home', current_streak: streak?.currentStreak ?? 0 },
+      }).catch(() => null);
+    }
+  }, [loading, session?.user.id, streak?.currentStreak, summary.fullyDialed]);
+
+  async function refreshProofWallet() {
+    if (!session?.user.id) return;
+    const wallet = await getTodayProofWallet(session.user.id, {
+      isPro: Boolean(pro.isPro || profile?.isPro),
+    }).catch(() => null);
+    setProofWallet(wallet);
+  }
 
   async function handleFriendReaction(entryId: string, reaction: ReactionType, selected: boolean) {
     setFriendFeed((items) =>
@@ -191,6 +242,7 @@ export default function HomeScreen() {
             {summary.fullyDialed ? 'Fully Dialed. Beautiful.' : 'Stack proof across four pillars.'}
           </Text>
         </View>
+        <ProofBalancePill wallet={proofWallet} loading={loading} />
       </View>
 
       {loading ? <LoadingState label="Loading progress" /> : null}
@@ -199,7 +251,35 @@ export default function HomeScreen() {
       {!loading && !error ? (
         <>
           <FullyDialedBanner visible={summary.fullyDialed} />
-          <DaySummaryCard summary={summary} title="Today" />
+          <DaySummaryCard summary={summary} title="Today's Dialed Score" />
+          <DailyProofCard
+            wallet={proofWallet}
+            loading={loading}
+            onEarnMore={handleShareDay}
+            onUpgrade={() => pro.openPaywall('settings')}
+          />
+          {proofWallet?.remainingProofs === 0 || proofWallet?.setupRequired ? (
+            <>
+              <EarnMoreProofsCard onShare={handleShareDay} onInvite={() => router.push('/friends')} />
+              {!pro.isPro && !profile?.isPro ? (
+                <ProProofUpgradeCard onPress={() => pro.openPaywall('settings')} />
+              ) : null}
+            </>
+          ) : null}
+          <Card style={styles.nextActionCard}>
+            <View style={styles.nextActionRow}>
+              <View style={styles.nextActionCopy}>
+                <Text variant="subtitle">Next best action</Text>
+                <Text muted>{nextBestAction}</Text>
+              </View>
+              <Text variant="caption" style={styles.nextActionBadge}>
+                Proof &gt; promises
+              </Text>
+            </View>
+            <Text variant="caption" muted>
+              {competitionCopy} Use your Proofs wisely.
+            </Text>
+          </Card>
           <ShareCTAButton
             label={summary.fullyDialed ? 'Share Fully Dialed Day' : 'Share today'}
             onPress={handleShareDay}
@@ -323,21 +403,21 @@ export default function HomeScreen() {
 
           {entries.length === 0 ? (
             <Card style={styles.empty}>
-              <Text variant="subtitle">No entries yet</Text>
+              <Text variant="subtitle">Your score is waiting.</Text>
               <Text muted style={styles.emptyText}>
-                Start with a photo proof or a quick manual check-in.
+                Log one proof and light up your first pillar. Fully Dialed Day is still possible.
               </Text>
               <View style={styles.emptyActions}>
-                <Button onPress={() => router.push('/(tabs)/capture')} style={styles.emptyButton}>
-                  <Camera size={18} color={theme.colors.white} />
-                  Capture
+                <Button onPress={() => router.push('/first-proof')} style={styles.emptyButton}>
+                  <ListPlus size={18} color={theme.colors.white} />
+                  Log First Proof
                 </Button>
                 <Button
                   variant="secondary"
-                  onPress={() => router.push('/(tabs)/check-in')}
+                  onPress={() => router.push('/(tabs)/capture')}
                   style={styles.emptyButton}>
-                  <ListPlus size={18} color={theme.colors.ink} />
-                  Check-In
+                  <Camera size={18} color={theme.colors.ink} />
+                  Photo
                 </Button>
               </View>
             </Card>
@@ -350,7 +430,10 @@ export default function HomeScreen() {
         visible={shareVisible}
         data={shareData}
         isPro={pro.isPro || profile?.isPro}
-        onClose={() => setShareVisible(false)}
+        onClose={() => {
+          setShareVisible(false);
+          refreshProofWallet();
+        }}
       />
     </Screen>
   );
@@ -379,6 +462,27 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: 10,
+  },
+  nextActionCard: {
+    gap: 10,
+  },
+  nextActionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  nextActionCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  nextActionBadge: {
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    overflow: 'hidden',
+    color: theme.colors.primaryDark,
+    backgroundColor: theme.colors.primarySoft,
   },
   sectionHeader: {
     flexDirection: 'row',

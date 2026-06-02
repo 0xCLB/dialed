@@ -47,7 +47,7 @@ export default function LoginScreen() {
       </View>
       <Text variant="hero">Dialed Self</Text>
       <Text muted>
-        Sign in with email for dev and staging. Twilio-free, RLS-safe, and ready for real check-ins.
+        Prove your day. Get your Dialed Score. Beat your friends.
       </Text>
 
       <Card style={styles.form}>

@@ -64,6 +64,7 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: theme.colors.background },
           }}>
           <Stack.Screen name="index" />
+          <Stack.Screen name="first-proof" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="entry/[id]" />

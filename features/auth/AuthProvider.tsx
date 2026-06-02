@@ -6,6 +6,7 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Text';
 import { theme } from '@/components/ui/theme';
 import { useAuthStore } from '@/features/auth/auth-store';
+import { isSupabaseConfigured } from '@/lib/env';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const bootstrap = useAuthStore((state) => state.bootstrap);
@@ -18,6 +19,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const routePath = segments.join('/');
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+
     let cleanup: (() => void) | undefined;
     bootstrap().then((unsubscribe) => {
       cleanup = unsubscribe;
@@ -54,6 +59,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [initialized, loading, profile?.onboardingComplete, routeGroup, routePath, session]);
 
+  if (!isSupabaseConfigured) {
+    return (
+      <LinearGradient colors={theme.gradients.primaryPastel} style={styles.loading}>
+        <View style={styles.mark}>
+          <Text variant="title" style={styles.markText}>
+            DS
+          </Text>
+        </View>
+        <Text variant="title">Supabase env missing</Text>
+        <Text muted style={styles.envHelp}>
+          Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your local .env file.
+        </Text>
+      </LinearGradient>
+    );
+  }
+
   if (!initialized) {
     return (
       <LinearGradient colors={theme.gradients.primaryPastel} style={styles.loading}>
@@ -88,5 +109,9 @@ const styles = StyleSheet.create({
   },
   markText: {
     color: theme.colors.white,
+  },
+  envHelp: {
+    maxWidth: 300,
+    textAlign: 'center',
   },
 });

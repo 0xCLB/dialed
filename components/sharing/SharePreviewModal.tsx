@@ -16,6 +16,7 @@ import { LeaderboardShareCard } from '@/components/sharing/LeaderboardShareCard'
 import { StreakShareCard } from '@/components/sharing/StreakShareCard';
 import { TemplatePicker } from '@/components/sharing/TemplatePicker';
 import { usePro } from '@/features/monetization/usePro';
+import { earnBonusProof } from '@/features/proofs/proofService';
 import { exportShareCard } from '@/features/sharing/shareExportService';
 import { track } from '@/lib/analytics';
 import type { ShareCardData, ShareCardTemplate } from '@/features/sharing/types';
@@ -58,6 +59,9 @@ export function SharePreviewModal({
     track('share_card_opened', { type: effectiveData.type, template: effectiveData.template });
     try {
       await exportShareCard({ ref: cardRef, data: effectiveData });
+      await earnBonusProof('share_card', {
+        metadata: { share_type: effectiveData.type, template: effectiveData.template },
+      }).catch(() => null);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
