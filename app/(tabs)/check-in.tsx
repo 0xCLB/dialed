@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Send } from 'lucide-react-native';
+import { Camera, HeartPulse, MapPin, StickyNote, Utensils } from 'lucide-react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -17,7 +17,6 @@ import { VisibilitySelector } from '@/components/entries/VisibilitySelector';
 import { DailyProofCard } from '@/components/proofs/DailyProofCard';
 import { EarnMoreProofsCard } from '@/components/proofs/EarnMoreProofsCard';
 import { ProofBalancePill } from '@/components/proofs/ProofBalancePill';
-import { ProofSpendModal } from '@/components/proofs/ProofSpendModal';
 import { ProProofUpgradeCard } from '@/components/proofs/ProProofUpgradeCard';
 import { useAuth } from '@/features/auth/useAuth';
 import { createManualEntry } from '@/features/entries/entryService';
@@ -27,7 +26,7 @@ import type {
   WellnessPillar,
 } from '@/features/entries/types';
 import { usePro } from '@/features/monetization/usePro';
-import { canSpendProof, getTodayProofWallet } from '@/features/proofs/proofService';
+import { getTodayProofWallet } from '@/features/proofs/proofService';
 import type { ProofWallet } from '@/features/proofs/types';
 import { PILLAR_ORDER } from '@/lib/constants';
 
@@ -63,7 +62,6 @@ export default function CheckInScreen() {
   );
   const [proofWallet, setProofWallet] = useState<ProofWallet | null>(null);
   const [proofLoading, setProofLoading] = useState(true);
-  const [proofModalVisible, setProofModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedEntry, setSubmittedEntry] = useState<EntryWithScore | null>(null);
   const hasProAccess = Boolean(pro.isPro || profile?.isPro);
@@ -111,29 +109,60 @@ export default function CheckInScreen() {
     }
   }
 
-  async function handleUseProofPress() {
-    if (!session?.user.id) {
-      Alert.alert('Sign in required', 'Log in again before creating an entry.');
-      return;
-    }
-
+  function requireActivity() {
     if (!activityTag.trim()) {
       Alert.alert('Add an activity', 'Pick a quick action or type one in.');
-      return;
+      return false;
     }
-
-    const proofCheck = await canSpendProof(session.user.id, { isPro: hasProAccess });
-    setProofWallet(proofCheck.wallet);
-    setProofModalVisible(true);
+    return true;
   }
 
-  async function handleSubmit() {
+  function openPhotoProof() {
+    if (!requireActivity()) {
+      return;
+    }
+    Haptics.selectionAsync();
+    router.push({
+      pathname: '/(tabs)/capture',
+      params: { activity: activityTag, pillar },
+    });
+  }
+
+  function openFoodProof() {
+    if (!requireActivity()) {
+      return;
+    }
+    Haptics.selectionAsync();
+    router.push({
+      pathname: '/(tabs)/capture',
+      params: { activity: activityTag, pillar: 'fuel', mode: 'food' },
+    });
+  }
+
+  function openLocationProof() {
+    if (!requireActivity()) {
+      return;
+    }
+    Alert.alert(
+      'Location Proof is staged',
+      'We will use privacy-safe place verification soon. For beta, add a photo or save this as a Manual Note.',
+    );
+  }
+
+  function openHealthProof() {
+    Haptics.selectionAsync();
+    router.push('/settings/health');
+  }
+
+  async function handleSaveManualNote() {
     if (!session?.user.id) {
       Alert.alert('Sign in required', 'Log in again before creating an entry.');
       return;
     }
+    if (!requireActivity()) {
+      return;
+    }
 
-    setProofModalVisible(false);
     setSubmitting(true);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -143,6 +172,15 @@ export default function CheckInScreen() {
         caption,
         wellnessPillar: pillar,
         visibility,
+        proofType: 'manual_note',
+        verificationMethod: 'manual_note',
+        trustLevel: 'manual_note',
+        rankedEligible: false,
+        scoreRequested: false,
+        consumesDailyProof: false,
+        metadata: {
+          manual_note_policy: 'timeline_context_only',
+        },
       });
       setSubmittedEntry(entry);
       await refreshProofWallet();
@@ -160,12 +198,10 @@ export default function CheckInScreen() {
   }
 
   function openEarnMore() {
-    setProofModalVisible(false);
     router.push('/(tabs)/home');
   }
 
   function openUpgrade() {
-    setProofModalVisible(false);
     pro.openPaywall('settings');
   }
 
@@ -194,8 +230,10 @@ export default function CheckInScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text variant="title">Manual check-in</Text>
-        <Text muted>Log the healthy thing while it is still fresh.</Text>
+        <Text variant="title">Log Proof</Text>
+        <Text muted>
+          Prove it with a photo, place, or health data. Manual notes help your timeline, but verified proofs drive ranked score.
+        </Text>
         <ProofBalancePill wallet={proofWallet} loading={proofLoading} />
       </View>
 
@@ -207,12 +245,45 @@ export default function CheckInScreen() {
       />
 
       <Card style={styles.card}>
-        <Text variant="subtitle">Quick picks</Text>
+        <Text variant="subtitle">Proof starters</Text>
         <QuickPickGrid
           picks={QUICK_PICKS}
           selectedKey={selectedPick?.key ?? null}
           onSelect={handleQuickPick}
         />
+      </Card>
+
+      <Card style={styles.card}>
+        <Text variant="subtitle">Verify this action</Text>
+        <Text variant="caption" muted>
+          Proof &gt; promises. Verified proofs move your score.
+        </Text>
+        <View style={styles.verifyGrid}>
+          <Button onPress={openPhotoProof} style={styles.verifyButton}>
+            <Camera size={18} color={theme.colors.white} />
+            Add Photo
+          </Button>
+          <Button variant="secondary" onPress={openFoodProof} style={styles.verifyButton}>
+            <Utensils size={18} color={theme.colors.ink} />
+            Food Photo
+          </Button>
+          <Button variant="secondary" onPress={openLocationProof} style={styles.verifyButton}>
+            <MapPin size={18} color={theme.colors.ink} />
+            Add Location
+          </Button>
+          <Button variant="secondary" onPress={openHealthProof} style={styles.verifyButton}>
+            <HeartPulse size={18} color={theme.colors.ink} />
+            Use Health Data
+          </Button>
+          <Button
+            variant="secondary"
+            loading={submitting}
+            onPress={handleSaveManualNote}
+            style={styles.verifyButton}>
+            <StickyNote size={18} color={theme.colors.ink} />
+            Save as Note
+          </Button>
+        </View>
       </Card>
 
       <Card style={styles.card}>
@@ -263,19 +334,6 @@ export default function CheckInScreen() {
         </>
       ) : null}
 
-      <Button loading={submitting} disabled={!activityTag.trim()} onPress={handleUseProofPress}>
-        <Send size={18} color={theme.colors.white} />
-        Use a Proof
-      </Button>
-      <ProofSpendModal
-        visible={proofModalVisible}
-        wallet={proofWallet}
-        loading={submitting}
-        onConfirm={handleSubmit}
-        onClose={() => setProofModalVisible(false)}
-        onEarnMore={openEarnMore}
-        onUpgrade={openUpgrade}
-      />
     </Screen>
   );
 }
@@ -296,5 +354,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  verifyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  verifyButton: {
+    flexGrow: 1,
+    minWidth: '47%',
   },
 });

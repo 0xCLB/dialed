@@ -8,6 +8,7 @@ import { Text } from '@/components/ui/Text';
 import { theme } from '@/components/ui/theme';
 import { PointsBadge } from '@/components/entries/PointsBadge';
 import { ReactionBar } from '@/components/social/ReactionBar';
+import { getEntryDisplayScore } from '@/features/scoring/basicScoring';
 import type { FriendFeedItem, ReactionType } from '@/features/social/types';
 
 function entryTitle(item: FriendFeedItem) {
@@ -22,6 +23,7 @@ export function FriendFeedCard({
   onReaction: (entryId: string, reaction: ReactionType, selected: boolean) => void;
 }) {
   const photo = item.entry.media[0]?.signedUrl;
+  const displayScore = getEntryDisplayScore(item.entry);
 
   return (
     <Card style={styles.card}>
@@ -35,7 +37,11 @@ export function FriendFeedCard({
             {formatDistanceToNow(new Date(item.entry.occurredAt), { addSuffix: true })}
           </Text>
         </View>
-        <PointsBadge points={item.entry.score?.points} pending={!item.entry.score} />
+        <PointsBadge
+          points={displayScore.points}
+          pending={displayScore.pending}
+          basic={displayScore.basic}
+        />
       </Pressable>
 
       <Pressable onPress={() => router.push(`/entry/${item.entry.id}`)} style={styles.entry}>

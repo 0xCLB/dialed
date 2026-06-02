@@ -22,6 +22,7 @@ export type PaywallPlacement =
 export type ProFeature = {
   id:
     | 'advanced_ai_scoring'
+    | 'advanced_food_analysis'
     | 'premium_share_templates'
     | 'reel_exports'
     | 'weekly_digest'

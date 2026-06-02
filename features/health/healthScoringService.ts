@@ -18,24 +18,21 @@ function metricPillar(metricType: HealthMetricType): WellnessPillar {
 function scoreMetric(metricType: HealthMetricType, value: number) {
   if (metricType === 'steps') {
     const points = pointsForThresholds(value, [
-      [3000, 5],
       [5000, 10],
       [8000, 15],
       [10000, 20],
-      [12500, 24],
     ]);
     return {
       points,
       explanation:
         points > 0
-          ? `${Math.round(value).toLocaleString()} steps gave Movement a receipt.`
+          ? `${Math.round(value).toLocaleString()} steps gave Movement a clean signal.`
           : 'Steps are logged, but not point-worthy yet.',
     };
   }
 
   if (metricType === 'workout') {
     const points = pointsForThresholds(value, [
-      [10, 8],
       [15, 15],
       [30, 25],
       [60, 35],
@@ -68,10 +65,7 @@ function scoreMetric(metricType: HealthMetricType, value: number) {
   if (metricType === 'sleep') {
     const hours = value / 60;
     const points = pointsForThresholds(hours, [
-      [5, 6],
-      [6, 12],
       [7, 20],
-      [8, 24],
     ]);
     return {
       points,
@@ -84,7 +78,6 @@ function scoreMetric(metricType: HealthMetricType, value: number) {
 
   if (metricType === 'mindfulness') {
     const points = pointsForThresholds(value, [
-      [3, 4],
       [5, 8],
       [10, 12],
       [20, 20],

@@ -30,15 +30,40 @@ After buckets exist, review and run:
 supabase/storage-policies.sql
 ```
 
-## 4. Configure Auth
+## 4. Apply Daily Proof Migration
+
+Open `supabase/migrations/daily_proof_economy.sql`, copy the SQL contents, and paste those contents into Supabase SQL Editor.
+
+Do not paste this path as the query:
+
+```text
+supabase/migrations/daily_proof_economy.sql
+```
+
+That is a filename, not SQL, and Supabase will fail with a syntax error.
+
+After running the SQL, verify:
+
+- `proof_wallets` exists with RLS enabled.
+- `proof_transactions` exists with RLS enabled.
+- Authenticated users can read their own wallet and transactions.
+- Direct client writes to the Proof tables are blocked.
+- Authenticated users can execute:
+  - `initialize_today_proof_wallet`
+  - `spend_proof_for_entry`
+  - `earn_bonus_proof`
+  - `refund_proof_for_entry`
+
+## 5. Configure Auth
 
 In Authentication settings:
 
-- Confirm Phone provider is enabled.
-- Confirm Twilio credentials are configured in Supabase.
-- Keep phone autoconfirm disabled for real SMS OTP testing.
+- Enable Email provider.
+- For local development only, disable email confirmation if immediate sign-up/onboarding is desired.
+- Keep Phone provider/Twilio deferred until production SMS testing.
+- Keep Apple Sign-In deferred until App Store launch prep.
 
-## 5. Configure Edge Function Secrets
+## 6. Configure Edge Function Secrets
 
 Set these in Supabase, never in repo files:
 
@@ -48,7 +73,7 @@ Set these in Supabase, never in repo files:
 - `REVENUECAT_WEBHOOK_AUTH`
 - `DIALED_INTERNAL_FUNCTION_TOKEN`
 
-## 6. Deploy Edge Functions Later
+## 7. Deploy Edge Functions Later
 
 Deploy only after SQL, RLS, storage policies, and secrets are verified:
 
@@ -57,3 +82,5 @@ Deploy only after SQL, RLS, storage policies, and secrets are verified:
 - `create-share-card`
 - `send-smart-notification`
 - `sync-revenuecat-webhook`
+
+For the first real-device beta smoke, `score-entry` can remain undeployed only if pending-score behavior is accepted. Deploy it before claiming the full Dialed Score loop.

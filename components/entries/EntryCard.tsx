@@ -8,6 +8,16 @@ import { Text } from '@/components/ui/Text';
 import { theme } from '@/components/ui/theme';
 import { PillarChip } from '@/components/entries/PillarChip';
 import { PointsBadge } from '@/components/entries/PointsBadge';
+import {
+  entryProofLabel,
+  getEntryProofType,
+  getEntryTrustWeight,
+  isManualNote,
+  verificationMethodLabel,
+  getEntryVerificationMethod,
+} from '@/features/entries/proofPolicy';
+import { isFoodProof } from '@/features/food/foodAnalysisService';
+import { getEntryDisplayScore } from '@/features/scoring/basicScoring';
 import type { EntryWithScore, WellnessPillar } from '@/features/entries/types';
 
 function fallbackPillar(entry: EntryWithScore): WellnessPillar {
@@ -17,14 +27,36 @@ function fallbackPillar(entry: EntryWithScore): WellnessPillar {
 function entryTitle(entry: EntryWithScore) {
   return entry.activityTag
     ? entry.activityTag.replace(/[_-]+/g, ' ')
-    : entry.entryType === 'photo'
-      ? 'Photo proof'
-      : 'Manual check-in';
+    : entryProofLabel(entry);
+}
+
+function proofStatusLabel({
+  manualNote,
+  foodProof,
+  proofType,
+  scored,
+}: {
+  manualNote: boolean;
+  foodProof: boolean;
+  proofType: ReturnType<typeof getEntryProofType>;
+  scored: boolean;
+}) {
+  if (manualNote) return 'Manual Note';
+  if (foodProof) return 'Food Proof';
+  if (proofType === 'health') return 'Verified by Health';
+  if (scored) return 'Verified Proof';
+  return 'Pending Verification';
 }
 
 export function EntryCard({ entry }: { entry: EntryWithScore }) {
   const photo = entry.media.find((item) => item.mediaKind === 'proof')?.signedUrl;
-  const scored = Boolean(entry.score);
+  const displayScore = getEntryDisplayScore(entry);
+  const scored = displayScore.official;
+  const manualNote = isManualNote(entry);
+  const method = getEntryVerificationMethod(entry);
+  const proofType = getEntryProofType(entry);
+  const foodProof = isFoodProof(entry);
+  const statusLabel = proofStatusLabel({ manualNote, foodProof, proofType, scored });
 
   return (
     <Pressable onPress={() => router.push(`/entry/${entry.id}`)}>
@@ -48,6 +80,14 @@ export function EntryCard({ entry }: { entry: EntryWithScore }) {
         ) : null}
 
         <View style={styles.copy}>
+          <View style={styles.badgeRow}>
+            <Text variant="caption" style={[styles.proofBadge, manualNote && styles.noteBadge]}>
+              {statusLabel}
+            </Text>
+            <Text variant="caption" muted>
+              {verificationMethodLabel(method)} · {Math.round(getEntryTrustWeight(entry) * 100)}% trust
+            </Text>
+          </View>
           <Text variant="subtitle" style={styles.title}>
             {entryTitle(entry)}
           </Text>
@@ -60,18 +100,32 @@ export function EntryCard({ entry }: { entry: EntryWithScore }) {
             <Text muted numberOfLines={2}>
               {entry.score.aiSubtext}
             </Text>
+          ) : !manualNote ? (
+            <Text muted numberOfLines={2}>
+              {displayScore.detail}
+            </Text>
           ) : null}
         </View>
 
         <View style={styles.footer}>
-          <PointsBadge points={entry.score?.points} pending={!scored} />
+          {manualNote ? (
+            <Text variant="caption" style={styles.contextBadge}>
+              Context only
+            </Text>
+          ) : (
+            <PointsBadge
+              points={displayScore.points}
+              pending={displayScore.pending}
+              basic={displayScore.basic}
+            />
+          )}
           <View style={styles.status}>
             <CheckCircle2
               size={15}
-              color={scored ? theme.colors.success : theme.colors.warning}
+              color={scored || manualNote ? theme.colors.success : theme.colors.warning}
             />
             <Text variant="caption" muted>
-              {scored ? 'Scored' : 'Pending'}
+              {displayScore.rankedEligible ? 'Ranked eligible' : 'Not ranked'}
             </Text>
           </View>
         </View>
@@ -106,6 +160,33 @@ const styles = StyleSheet.create({
   },
   copy: {
     gap: 6,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  proofBadge: {
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    overflow: 'hidden',
+    color: theme.colors.primaryDark,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  noteBadge: {
+    color: theme.colors.muted,
+    backgroundColor: theme.colors.surfaceAlt,
+  },
+  contextBadge: {
+    minHeight: 30,
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    overflow: 'hidden',
+    color: theme.colors.muted,
+    backgroundColor: theme.colors.surfaceAlt,
   },
   title: {
     textTransform: 'capitalize',

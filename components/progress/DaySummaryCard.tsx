@@ -35,7 +35,7 @@ export function DaySummaryCard({
         <View style={styles.pending}>
           <Clock3 size={15} color={theme.colors.warning} />
           <Text variant="caption" muted>
-            {summary.pendingEntries} pending score{summary.pendingEntries === 1 ? '' : 's'}
+            {summary.pendingEntries} basic score{summary.pendingEntries === 1 ? '' : 's'} active; analysis pending
           </Text>
         </View>
       ) : null}

@@ -8,6 +8,7 @@ import {
   getUserStreak,
   recomputeLocalDaySummary,
 } from '@/features/progress/progressService';
+import { getEntryDisplayScore } from '@/features/scoring/basicScoring';
 import type { DailyScore, DaySummary } from '@/features/progress/types';
 import type { ProfileSummary } from '@/features/social/types';
 import { PILLARS, PILLAR_ORDER } from '@/lib/constants';
@@ -138,7 +139,8 @@ export function buildEntrySlides(entries: EntryWithScore[]): ReelSlide[] {
 
   return entries.map((entry, index) => {
     const pillar = entryPillar(entry);
-    const points = entry.score?.points ?? null;
+    const displayScore = getEntryDisplayScore(entry);
+    const points = displayScore.points;
     const pillarLabel = pillar ? PILLARS[pillar].label : 'Wellness';
 
     return {
@@ -146,7 +148,7 @@ export function buildEntrySlides(entries: EntryWithScore[]): ReelSlide[] {
       type: 'entry',
       date: entry.occurredAt.slice(0, 10),
       title: scoreLabel(points),
-      subtitle: entry.score?.aiSubtext ?? entry.caption ?? 'Proof > promises',
+      subtitle: entry.score?.aiSubtext ?? entry.caption ?? displayScore.detail ?? 'Proof > promises',
       kicker: `${pillarLabel} proof logged`,
       points,
       mediaUrl: entry.media[0]?.signedUrl ?? null,
@@ -157,7 +159,8 @@ export function buildEntrySlides(entries: EntryWithScore[]): ReelSlide[] {
       metadata: {
         activity: titleCaseActivity(entry.activityTag),
         slide_position: index + 1,
-        pending: !entry.score,
+        pending: displayScore.pending,
+        basic_score: displayScore.basic,
       },
     };
   });
@@ -271,7 +274,7 @@ export async function buildDailyReelData(date: string | Date = new Date()): Prom
         date: dateKey,
         title: 'Today in proof',
         subtitle: digestQuote,
-        kicker: 'TwainGPT digest',
+        kicker: 'Daily Recap',
         profile,
       }
     : null;

@@ -26,9 +26,9 @@ export function DigestCard({
           <Sparkles size={18} color={theme.colors.white} />
         </View>
         <View style={styles.title}>
-          <Text variant="subtitle">TwainGPT Digest</Text>
+          <Text variant="subtitle">Daily Recap</Text>
           <Text variant="caption" muted>
-            witty daily recap
+            witty day review
           </Text>
         </View>
       </View>
@@ -44,7 +44,7 @@ export function DigestCard({
           <DigestPillarSummary summary={digest.scoreSummary} />
           {onOpen ? (
             <Button variant="secondary" onPress={onOpen}>
-              Open Digest
+              Open Recap
               <ArrowRight size={18} color={theme.colors.ink} />
             </Button>
           ) : null}
@@ -52,11 +52,11 @@ export function DigestCard({
       ) : (
         <>
           <Text muted>
-            Generate the day&apos;s narrator once proof starts stacking.
+            Generate the day&apos;s recap once proof starts stacking.
           </Text>
           {onGenerate ? (
             <Button loading={loading} onPress={onGenerate}>
-              Generate Digest
+              Generate Recap
             </Button>
           ) : null}
         </>

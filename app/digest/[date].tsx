@@ -63,7 +63,7 @@ export default function DigestDateScreen() {
       const existing = await getDigestForDate(date);
       setDigest(existing);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Digest did not load.');
+      setError(loadError instanceof Error ? loadError.message : 'Daily Recap did not load.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -85,7 +85,7 @@ export default function DigestDateScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (generateError) {
       const message =
-        generateError instanceof Error ? generateError.message : 'Digest generation failed.';
+        generateError instanceof Error ? generateError.message : 'Daily Recap generation failed.';
       setError(message);
       track('digest_failed', { date, stage: 'screen', message });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -110,7 +110,7 @@ export default function DigestDateScreen() {
           <ArrowLeft size={18} color={theme.colors.ink} />
         </Button>
         <View style={styles.title}>
-          <Text variant="subtitle">Daily Digest</Text>
+          <Text variant="subtitle">Daily Recap</Text>
           <Text variant="caption" muted>
             {readableDate(date)}
           </Text>
@@ -136,7 +136,7 @@ export default function DigestDateScreen() {
               </View>
               <View style={styles.sourceBadge}>
                 <Text variant="caption" style={styles.sourceText}>
-                  {digest.source === 'edge' ? 'AI' : digest.source === 'stored' ? 'Saved' : 'Fallback'}
+                  {digest.source === 'edge' ? 'Smart' : digest.source === 'stored' ? 'Saved' : 'Basic'}
                 </Text>
               </View>
             </View>
@@ -170,9 +170,9 @@ export default function DigestDateScreen() {
 
           {pro.isPro ? (
             <Card style={styles.card}>
-              <Text variant="subtitle">Weekly TwainGPT Digest</Text>
+              <Text variant="subtitle">Weekly Recap</Text>
               <Text muted>
-                Pro weekly recap generation is staged here. Daily digests stay free.
+                Pro weekly recap generation is staged here. Daily Recaps stay free.
               </Text>
               <Button variant="secondary" disabled>
                 Coming soon
@@ -180,8 +180,8 @@ export default function DigestDateScreen() {
             </Card>
           ) : (
             <LockedFeatureCard
-              title="Weekly TwainGPT digest"
-              body="Daily recap is free. The full weekly roast-and-coach report is Dialed Pro."
+              title="Weekly Recap"
+              body="Daily Recap is free. The full weekly proof review is Dialed Pro."
               onPress={() => pro.openPaywall('weekly_digest')}
             />
           )}

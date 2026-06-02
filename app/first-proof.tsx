@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Camera, HeartPulse, ListPlus, Trophy } from 'lucide-react-native';
+import { Camera, FileText, HeartPulse, MapPin, Trophy, Utensils } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
@@ -18,6 +18,11 @@ export default function FirstProofScreen() {
     router.replace(path);
   }
 
+  function goFoodProof() {
+    Haptics.selectionAsync();
+    router.replace({ pathname: '/(tabs)/capture', params: { mode: 'food' } });
+  }
+
   return (
     <Screen>
       <View style={styles.heroMark}>
@@ -33,38 +38,60 @@ export default function FirstProofScreen() {
       <Card style={styles.featuredCard}>
         <View style={styles.optionHeader}>
           <View style={styles.optionIcon}>
-            <ListPlus size={22} color={theme.colors.primary} />
+            <Camera size={22} color={theme.colors.primary} />
           </View>
           <View style={styles.optionCopy}>
-            <Text variant="subtitle">Quick Check-In</Text>
-            <Text muted>Fastest path. Pick water, walk, protein, reading, stretch, or your own win.</Text>
+            <Text variant="subtitle">Photo Proof</Text>
+            <Text muted>Fast, visual, and strong enough to move your score.</Text>
           </View>
         </View>
-        <Button onPress={() => go('/(tabs)/check-in')}>
-          Log first proof
+        <Button onPress={() => go('/(tabs)/capture')}>
+          Take Photo Proof
         </Button>
       </Card>
 
       <View style={styles.optionGrid}>
         <Card style={styles.optionCard}>
-          <Camera size={24} color={theme.colors.primary} />
-          <Text variant="subtitle">Take Photo Proof</Text>
+          <Utensils size={24} color={theme.colors.primary} />
+          <Text variant="subtitle">Food Proof</Text>
           <Text variant="caption" muted>
-            Stronger artifact. Better share card.
+            Estimate macros, Fuel quality, and points from a meal photo.
           </Text>
-          <Button variant="secondary" onPress={() => go('/(tabs)/capture')}>
-            Capture
+          <Button variant="secondary" onPress={goFoodProof}>
+            Start
+          </Button>
+        </Card>
+
+        <Card style={styles.optionCard}>
+          <MapPin size={24} color={theme.colors.primary} />
+          <Text variant="subtitle">Location Proof</Text>
+          <Text variant="caption" muted>
+            Verify a gym, trail, studio, park, or recovery spot.
+          </Text>
+          <Button variant="secondary" onPress={() => go('/(tabs)/check-in')}>
+            Start
           </Button>
         </Card>
 
         <Card style={styles.optionCard}>
           <HeartPulse size={24} color={theme.colors.primary} />
-          <Text variant="subtitle">Sync Health Later</Text>
+          <Text variant="subtitle">Health Proof</Text>
           <Text variant="caption" muted>
-            Health auto-scoring belongs in Pro power.
+            Sync private Apple Health signals later.
           </Text>
           <Button variant="secondary" onPress={() => go('/settings/health')}>
-            Later
+            Sync Later
+          </Button>
+        </Card>
+
+        <Card style={styles.optionCard}>
+          <FileText size={24} color={theme.colors.primary} />
+          <Text variant="subtitle">Manual Note</Text>
+          <Text variant="caption" muted>
+            Timeline context. Verified proofs move ranked score.
+          </Text>
+          <Button variant="secondary" onPress={() => go('/(tabs)/check-in')}>
+            Save Note
           </Button>
         </Card>
       </View>
@@ -72,7 +99,7 @@ export default function FirstProofScreen() {
       <Card style={styles.noteCard}>
         <Text variant="subtitle">Proofs are finite.</Text>
         <Text muted>
-          Free starts with 5 Daily Proofs. Use them wisely. Pro unlocks more ways to prove the day.
+          Free starts with 5 Daily Proofs. Manual notes help your timeline. Verified proofs move your ranked score.
         </Text>
       </Card>
 
@@ -117,10 +144,12 @@ const styles = StyleSheet.create({
   },
   optionGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   optionCard: {
-    flex: 1,
+    flexBasis: '48%',
+    flexGrow: 1,
     gap: 10,
   },
   noteCard: {

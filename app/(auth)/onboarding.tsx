@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Check, Flame, ShieldCheck, Ticket } from 'lucide-react-native';
+import { Camera, Flame, ShieldCheck, Sparkles, Trophy } from 'lucide-react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -12,16 +12,6 @@ import { TextInputField } from '@/components/ui/TextInputField';
 import { theme } from '@/components/ui/theme';
 import { useAuthStore } from '@/features/auth/auth-store';
 import { completeOnboarding } from '@/features/auth/auth-service';
-
-const GOAL_OPTIONS = [
-  'Move more',
-  'Hydrate',
-  'Eat cleaner',
-  'Sleep better',
-  'Focus',
-  'Recover',
-  'Build discipline',
-];
 
 function usernameFromDisplayName(value: string) {
   return value
@@ -36,34 +26,20 @@ export default function OnboardingScreen() {
   const session = useAuthStore((state) => state.session);
   const profile = useAuthStore((state) => state.profile);
   const refreshProfile = useAuthStore((state) => state.refreshProfile);
+  const emailHandle = session?.user.email?.split('@')[0] ?? '';
   const [step, setStep] = useState(0);
-  const [goals, setGoals] = useState<string[]>([]);
-  const [displayName, setDisplayName] = useState(profile?.displayName ?? '');
-  const [username, setUsername] = useState(profile?.username ?? '');
+  const [displayName, setDisplayName] = useState(profile?.displayName ?? emailHandle);
+  const [username, setUsername] = useState(profile?.username ?? usernameFromDisplayName(emailHandle));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const canContinue = useMemo(() => {
-    if (step === 1) return goals.length === 3;
-    if (step === 2) return Boolean(displayName.trim() && username.trim().length >= 3);
+    if (step === 3) return Boolean(displayName.trim() && username.trim().length >= 3);
     return true;
-  }, [displayName, goals.length, step, username]);
+  }, [displayName, step, username]);
 
   if (!session) {
     return <Redirect href="/(auth)/login" />;
-  }
-
-  function toggleGoal(goal: string) {
-    Haptics.selectionAsync();
-    setGoals((current) => {
-      if (current.includes(goal)) {
-        return current.filter((item) => item !== goal);
-      }
-      if (current.length >= 3) {
-        return current;
-      }
-      return [...current, goal];
-    });
   }
 
   function handleDisplayName(value: string) {
@@ -73,7 +49,7 @@ export default function OnboardingScreen() {
     }
   }
 
-  async function handleComplete() {
+  async function handleComplete(destination: 'first-proof' | 'pro' = 'first-proof') {
     if (!session) return;
     setLoading(true);
     setError(null);
@@ -88,7 +64,11 @@ export default function OnboardingScreen() {
       });
       await refreshProfile();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/first-proof');
+      if (destination === 'pro') {
+        router.replace('/paywall?placement=profile');
+      } else {
+        router.replace('/first-proof');
+      }
     } catch (completeError) {
       setError(completeError instanceof Error ? completeError.message : 'Could not save profile.');
     } finally {
@@ -98,7 +78,7 @@ export default function OnboardingScreen() {
 
   function nextStep() {
     if (step === 3) {
-      handleComplete();
+      handleComplete('first-proof');
       return;
     }
     Haptics.selectionAsync();
@@ -120,7 +100,7 @@ export default function OnboardingScreen() {
           </View>
           <Text variant="hero">How Dialed are you today?</Text>
           <Text muted>
-            Prove healthy actions. Earn points. Beat your friends.
+            Prove your day. Get your Dialed Score. Beat your friends.
           </Text>
           <Card style={styles.promiseCard}>
             <Text variant="subtitle">A daily status game for becoming your best self.</Text>
@@ -131,33 +111,41 @@ export default function OnboardingScreen() {
 
       {step === 1 ? (
         <>
-          <Text variant="title">Pick 3 goals</Text>
-          <Text muted>We will make the first wins obvious. No homework pile.</Text>
-          <View style={styles.goalGrid}>
-            {GOAL_OPTIONS.map((goal) => {
-              const selected = goals.includes(goal);
-              return (
-                <Button
-                  key={goal}
-                  variant={selected ? 'primary' : 'secondary'}
-                  style={styles.goalButton}
-                  onPress={() => toggleGoal(goal)}>
-                  {selected ? <Check size={16} color={theme.colors.white} /> : null}
-                  {goal}
-                </Button>
-              );
-            })}
+          <View style={styles.heroMark}>
+            <Camera size={30} color={theme.colors.white} />
           </View>
-          <Text variant="caption" muted>
-            {goals.length}/3 selected
-          </Text>
+          <Text variant="title">Use Daily Proofs to prove healthy actions.</Text>
+          <Text muted>Photos, places, and health data beat promises. Manual Notes are context, not ranked proof.</Text>
+          <Card style={styles.promiseCard}>
+            <Text variant="subtitle">Photo. Location. Health. Hybrid.</Text>
+            <Text muted>Verified inputs move your score and friend leaderboard.</Text>
+          </Card>
         </>
       ) : null}
 
       {step === 2 ? (
         <>
-          <Text variant="title">Create your identity</Text>
-          <Text muted>Your friends need a name to chase.</Text>
+          <View style={styles.heroMark}>
+            <Trophy size={30} color={theme.colors.white} />
+          </View>
+          <Text variant="title">Complete Movement, Fuel, Mind, Recovery.</Text>
+          <Text muted>Earn Dialed Points, light up pillars, and spend Daily Proofs wisely.</Text>
+          <Card style={styles.promiseCard}>
+            <Text variant="subtitle">Four pillars. One daily score.</Text>
+            <Text muted>Fully Dialed Days become share-worthy status moments.</Text>
+          </Card>
+        </>
+      ) : null}
+
+      {step === 3 ? (
+        <>
+          <View style={styles.heroMark}>
+            <Sparkles size={30} color={theme.colors.white} />
+          </View>
+          <Text variant="title">Beat friends and share proof.</Text>
+          <Text muted>
+            Build your best self where your friends can see it.
+          </Text>
           <Card style={styles.form}>
             <TextInputField
               label="Display name"
@@ -174,23 +162,11 @@ export default function OnboardingScreen() {
               placeholder="dialed"
             />
           </Card>
-        </>
-      ) : null}
-
-      {step === 3 ? (
-        <>
-          <View style={styles.heroMark}>
-            <Ticket size={30} color={theme.colors.white} />
-          </View>
-          <Text variant="title">Log your first proof</Text>
-          <Text muted>
-            Start with one easy check-in. One proof can move the day.
-          </Text>
           <Card style={styles.promiseCard}>
             <View style={styles.promiseRow}>
               <ShieldCheck size={20} color={theme.colors.primary} />
               <Text muted style={styles.promiseCopy}>
-                Free starts with 5 Daily Proofs. Pro adds more ways to prove the day, not a free win button.
+                Optional: Pro unlocks more Daily Proofs, advanced food analysis, Health insights, premium shares, and deeper recaps.
               </Text>
             </View>
           </Card>
@@ -205,8 +181,16 @@ export default function OnboardingScreen() {
             Back
           </Button>
         ) : null}
+        {step === 3 ? (
+          <Button
+            variant="secondary"
+            disabled={!canContinue || loading}
+            onPress={() => handleComplete('pro')}>
+            See Pro
+          </Button>
+        ) : null}
         <Button disabled={!canContinue} loading={loading} onPress={nextStep} style={styles.nextButton}>
-          {step === 3 ? 'Choose first proof' : 'Continue'}
+          {step === 3 ? 'Start Free' : 'Continue'}
         </Button>
       </View>
     </Screen>
@@ -245,14 +229,6 @@ const styles = StyleSheet.create({
   },
   promiseCopy: {
     flex: 1,
-  },
-  goalGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  goalButton: {
-    minHeight: 48,
   },
   form: {
     gap: 14,

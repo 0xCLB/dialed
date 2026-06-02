@@ -37,8 +37,8 @@ const BENEFITS = [
     icon: <Ticket size={18} color={theme.colors.primary} />,
   },
   {
-    title: 'Premium AI insights',
-    body: 'Deeper scoring. Better context. Still action-based, never medical.',
+    title: 'Premium Proof Analysis',
+    body: 'Deeper scoring context plus advanced food analysis. Still action-based, never medical.',
     icon: <Brain size={18} color={theme.colors.primary} />,
   },
   {
@@ -57,7 +57,7 @@ const BENEFITS = [
     icon: <Film size={18} color={theme.colors.primary} />,
   },
   {
-    title: 'Weekly TwainGPT digests',
+    title: 'Weekly Recaps',
     body: 'A smarter read on what your week was really saying.',
     icon: <RotateCcw size={18} color={theme.colors.primary} />,
   },
@@ -68,7 +68,7 @@ const BENEFITS = [
   },
   {
     title: 'Advanced health analytics',
-    body: 'A placeholder for HRV, recovery, sleep, and wearable trends.',
+    body: 'Health insights for HRV, recovery, sleep, and wearable trends.',
     icon: <HeartPulse size={18} color={theme.colors.primary} />,
   },
 ];
@@ -190,7 +190,7 @@ export default function PaywallScreen() {
           </View>
         </View>
         <Text variant="caption" muted>
-          Free gets limited Daily Proofs, basic scoring, and the daily leaderboard. Pro adds capacity, health auto-scoring, premium templates, deeper digest, and advanced filters.
+          Free gets limited Daily Proofs, basic scoring, and the daily leaderboard. Pro adds capacity, advanced food analysis, health auto-scoring, premium templates, deeper recap, and advanced filters.
         </Text>
         <ProofBalancePill wallet={proofWallet} loading={loading} />
       </Card>

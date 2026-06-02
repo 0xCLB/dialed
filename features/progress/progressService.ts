@@ -1,5 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { PILLAR_ORDER } from '@/lib/constants';
+import { isEntryRankedEligible } from '@/features/entries/proofPolicy';
+import { getEntryDisplayScore } from '@/features/scoring/basicScoring';
 import type { EntryScore, EntryWithScore } from '@/features/entries/types';
 import type {
   DailyScore,
@@ -174,14 +176,20 @@ export function derivePillarProgressFromEntries(entries: EntryWithScore[]): Pill
   const counts: Record<WellnessPillar, number> = { ...ZERO_PILLAR_POINTS };
 
   for (const entry of entries) {
+    if (!isEntryRankedEligible(entry)) {
+      continue;
+    }
+
     const pillar = (entry.score?.wellnessPillar ?? entry.wellnessPillar) as WellnessPillar | null;
     if (!pillar) {
       continue;
     }
     counts[pillar] += 1;
-    if (entry.score) {
-      points[pillar] += entry.score.points;
-    } else {
+    const displayScore = getEntryDisplayScore(entry);
+    if (displayScore.points) {
+      points[pillar] += displayScore.points;
+    }
+    if (displayScore.pending) {
       pending[pillar] += 1;
     }
   }
@@ -196,7 +204,9 @@ export function derivePillarProgressFromEntries(entries: EntryWithScore[]): Pill
 }
 
 export function deriveDailyTotalFromEntryScores(entries: EntryWithScore[]) {
-  return entries.reduce((total, entry) => total + (entry.score?.points ?? 0), 0);
+  return entries
+    .filter(isEntryRankedEligible)
+    .reduce((total, entry) => total + (getEntryDisplayScore(entry).points ?? 0), 0);
 }
 
 export async function getUserStreak(userId: string): Promise<Streak> {
@@ -221,11 +231,12 @@ export async function getUserStreak(userId: string): Promise<Streak> {
 
 export function recomputeLocalDaySummary(
   entries: EntryWithScore[],
-  entryScores: EntryScore[] = entries.flatMap((entry) => (entry.score ? [entry.score] : [])),
+  _entryScores: EntryScore[] = entries.flatMap((entry) => (entry.score ? [entry.score] : [])),
   date = localDateKey(),
   dailyScore?: DailyScore | null,
 ): DaySummary {
-  const derivedProgress = derivePillarProgressFromEntries(entries);
+  const rankedEntries = entries.filter(isEntryRankedEligible);
+  const derivedProgress = derivePillarProgressFromEntries(rankedEntries);
   const progressByPillar = new Map(derivedProgress.map((progress) => [progress.pillar, progress]));
 
   const serverPoints = dailyScore
@@ -239,11 +250,7 @@ export function recomputeLocalDaySummary(
 
   const pillarProgress = PILLAR_ORDER.map((pillar) => {
     const derived = progressByPillar.get(pillar);
-    const points =
-      serverPoints?.[pillar] ??
-      entryScores
-        .filter((score) => score.wellnessPillar === pillar)
-        .reduce((total, score) => total + score.points, 0);
+    const points = serverPoints?.[pillar] ?? derived?.points ?? 0;
 
     return {
       pillar,
@@ -258,7 +265,6 @@ export function recomputeLocalDaySummary(
     .map((progress) => progress.pillar);
   const totalPoints =
     dailyScore?.totalPoints ??
-    entryScores.reduce((total, score) => total + score.points, 0) ??
     deriveDailyTotalFromEntryScores(entries);
 
   return {
@@ -266,7 +272,7 @@ export function recomputeLocalDaySummary(
     totalPoints,
     completedPillars,
     pillarProgress,
-    pendingEntries: entries.filter((entry) => !entry.score || entry.status === 'pending_score').length,
+    pendingEntries: rankedEntries.filter((entry) => getEntryDisplayScore(entry).pending).length,
     entryCount: entries.length,
     fullyDialed: completedPillars.length === 4,
     source: dailyScore ? 'daily_score' : 'entry_scores',

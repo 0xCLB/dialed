@@ -114,7 +114,7 @@ export default function NotificationSettingsScreen() {
       await createLocalNotificationRecord({
         userId: session.user.id,
         type: 'digest',
-        title: 'TwainGPT Digest',
+        title: 'Daily Recap',
         body: 'Your day has been judged. Fairly. Mostly.',
         data: {
           notification_type: 'digest',
@@ -138,7 +138,7 @@ export default function NotificationSettingsScreen() {
         <View style={styles.headerCopy}>
           <Text variant="title">Smart Alerts</Text>
           <Text variant="caption" muted>
-            Friend heat, streak saves, and digest drops.
+            Friend heat, streak saves, and recap drops.
           </Text>
         </View>
       </View>
@@ -186,8 +186,8 @@ export default function NotificationSettingsScreen() {
               onValueChange={(value) => patchPreferences({ streakRisk: value })}
             />
             <ToggleRow
-              label="Digest ready"
-              detail="TwainGPT recap moments."
+              label="Recap ready"
+              detail="Daily Recap moments."
               value={preferences.digestReady}
               onValueChange={(value) => patchPreferences({ digestReady: value })}
             />

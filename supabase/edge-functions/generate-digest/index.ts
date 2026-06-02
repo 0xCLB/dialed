@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
     );
 
     const output = {
-      title: `${payload.digest_date} Dialed Digest`,
+      title: `${payload.digest_date} Daily Recap`,
       body:
         missingPillars.length === 0
           ? `All four pillars showed up. ${totalPoints} Dialed Points says the day had receipts.`
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
         entry_count: typedEntries.length,
         top_activity: topActivity,
         missing_pillars: missingPillars,
-        TODO: 'Replace deterministic copy with TwainGPT once prompts and evaluation are finalized.',
+        generation_mode: 'deterministic_template',
       },
       score_summary: {
         total_points: totalPoints,

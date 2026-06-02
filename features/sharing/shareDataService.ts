@@ -12,6 +12,7 @@ import {
   getUserStreak,
   recomputeLocalDaySummary,
 } from '@/features/progress/progressService';
+import { getEntryDisplayScore } from '@/features/scoring/basicScoring';
 import type { WellnessPillar } from '@/features/progress/types';
 import { getFriendProfile } from '@/features/social/socialService';
 import type { ProfileSummary } from '@/features/social/types';
@@ -84,14 +85,15 @@ function defaultDeepLink(type: string, id?: string) {
 export async function buildEntryShareData(entryId: string): Promise<ShareCardData> {
   const [{ profile }, entry] = await Promise.all([getMyProfile(), getEntryWithScore(entryId)]);
   const pillar = entry.score?.wellnessPillar ?? entry.wellnessPillar ?? 'mind';
-  const points = entry.score?.points ?? 0;
+  const displayScore = getEntryDisplayScore(entry);
+  const points = displayScore.points ?? 0;
 
   return {
     type: 'entry',
     template: entry.entryType === 'photo' ? 'athlete' : 'clean',
     kicker: `${PILLARS[pillar].label} proof logged`,
-    title: `+${points} Dialed Points`,
-    subtitle: entry.score?.aiSubtext ?? entry.caption ?? 'Proof > promises',
+    title: displayScore.basic ? `Basic +${points} Dialed Points` : `+${points} Dialed Points`,
+    subtitle: entry.score?.aiSubtext ?? entry.caption ?? displayScore.detail ?? 'Proof > promises',
     points,
     username: profile?.username,
     profile,
@@ -238,7 +240,7 @@ export async function buildDigestShareData(date: string | Date = new Date()): Pr
   return {
     type: 'digest',
     template: 'dark',
-    kicker: 'TwainGPT daily digest',
+    kicker: 'Daily Recap',
     title: digest.title,
     subtitle: digest.shareQuote,
     points: digest.scoreSummary.totalPoints,

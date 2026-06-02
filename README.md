@@ -1,12 +1,12 @@
 # Dialed Self
 
-Dialed Self is an iOS-first Expo Router app for AI-scored wellness proofs, Apple HealthKit sync,
+Dialed Self is an iOS-first Expo Router app for verified wellness proofs, Proof Analysis, Apple HealthKit sync,
 social competition, leaderboards, share exports, and RevenueCat Pro subscriptions.
 
 ## Stack
 
 - Expo SDK 55, React Native, TypeScript strict mode, Expo Router
-- Supabase Auth phone OTP, Postgres, Storage, RLS, Edge Functions
+- Supabase Auth email/password for development, Postgres, Storage, RLS, Edge Functions
 - RevenueCat subscriptions and Pro entitlement sync
 - Apple HealthKit via `@kingstinct/react-native-healthkit`
 - Expo Notifications, camera/photo proof capture, native share exports
@@ -43,7 +43,7 @@ social competition, leaderboards, share exports, and RevenueCat Pro subscription
    The connected project already exposes the expected Dialed table endpoints, so do not blindly
    rerun the schema. Use a privileged Supabase MCP or SQL Editor audit first.
 
-4. Configure server-only Edge Function secrets in Supabase, never in the app repo:
+4. Configure optional server-only Edge Function secrets in Supabase, never in the app repo. Beta can run with deterministic fallback scoring while these are absent:
 
    ```sh
    supabase secrets set OPENAI_API_KEY=... OPENAI_SCORING_MODEL=...
@@ -82,7 +82,7 @@ npx expo config --type public
 
 ## Security Notes
 
-- AI provider keys and Supabase service role keys are only used in Edge Functions.
+- Model provider keys and Supabase service role keys are only used in Edge Functions.
 - Client-created entries are scored by `score-entry`; official scoring lives in server-owned
   `entry_scores`.
 - Client-synced health samples are private `health_samples` rows. The app can create private
@@ -116,10 +116,10 @@ npx expo config --type public
 ## Current Limitations
 
 - The native app now has auth/onboarding, entry engine, progress systems, social/friends,
-  leaderboards, share cards, reels, TwainGPT digest, smart notification settings/inbox, and Apple
+  leaderboards, share cards, reels, Daily Recap, smart notification settings/inbox, and Apple
   Health sync surfaces.
 - `score-entry`, `generate-digest`, `create-share-card`, and `send-smart-notification` must be
-  deployed before server-owned scoring, saved AI digests, share asset generation, and production
+  deployed before server-owned scoring, saved recaps, share asset generation, and production
   pushes are fully live.
 - RevenueCat purchase buttons require dashboard offerings. Without offerings, the app shows a safe
   setup fallback and restore still attempts to refresh CustomerInfo.
@@ -127,7 +127,7 @@ npx expo config --type public
 - Fitbit is UI-stubbed but the current `health_samples.provider` SQL check constraint does not yet
   allow `fitbit`; Oura, Garmin, Strava, and WHOOP are connector placeholders.
 - Dialed Pro v1 includes paywall, restore, entitlement display, and premium gates. Advanced Pro
-  features such as weekly digest generation, remove-watermark exports, private challenge builder,
+  features such as weekly recap generation, remove-watermark exports, private challenge builder,
   and health analytics are placeholder-gated until those feature passes are built.
 - Supabase MCP is configured and authenticated locally, but this running Codex session did not expose
   callable Supabase MCP tools until a restart/new thread.

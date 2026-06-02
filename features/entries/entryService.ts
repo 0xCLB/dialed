@@ -4,9 +4,26 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 import { STORAGE_BUCKETS } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
-import { clearEntryInsertError, noteEntryInsertError } from '@/features/dev/diagnosticsStore';
+import {
+  clearEntryInsertError,
+  clearStorageUploadError,
+  noteEntryInsertError,
+  noteStorageUploadError,
+  noteVerification,
+} from '@/features/dev/diagnosticsStore';
+import {
+  buildProofMetadata,
+  entryTypeFromPersisted,
+  persistedEntryTypeForProof,
+  scoreTrustFromMetadata,
+  trustLevelForProof,
+  trustWeightForLevel,
+  verificationMethodForProof,
+  isEntryRankedEligible,
+} from '@/features/entries/proofPolicy';
 import { canSpendProof, spendProofForEntry } from '@/features/proofs/proofService';
 import { scoreEntry, type ScoreEntryResult } from '@/features/scoring/scoringService';
+import { getEntryDisplayScore } from '@/features/scoring/basicScoring';
 import type {
   CreateManualEntryInput,
   CreatePhotoEntryInput,
@@ -17,13 +34,15 @@ import type {
   EntryScore,
   EntryVisibility,
   EntryWithScore,
+  PersistedEntryType,
+  ProofType,
   WellnessPillar,
 } from '@/features/entries/types';
 
 type EntryRow = {
   id: string;
   user_id: string;
-  entry_type: Entry['entryType'];
+  entry_type: PersistedEntryType;
   activity_tag: string | null;
   caption: string | null;
   location_name: string | null;
@@ -138,11 +157,16 @@ function shouldSpendProof(metadata?: Record<string, unknown>) {
   return consumption !== 'free' && consumption !== 'system' && metadata?.free_proof !== true;
 }
 
+function shouldRequestScore(metadata?: Record<string, unknown>) {
+  return metadata?.score_requested !== false;
+}
+
 function mapEntry(row: EntryRow): Entry {
+  const metadata = asRecord(row.metadata);
   return {
     id: row.id,
     userId: row.user_id,
-    entryType: row.entry_type,
+    entryType: entryTypeFromPersisted(row.entry_type, metadata),
     activityTag: row.activity_tag,
     caption: row.caption,
     locationName: row.location_name,
@@ -152,13 +176,15 @@ function mapEntry(row: EntryRow): Entry {
     visibility: row.visibility,
     status: row.status,
     occurredAt: row.occurred_at,
-    metadata: asRecord(row.metadata),
+    metadata,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
 function mapScore(row: EntryScoreRow): EntryScore {
+  const metadata = asRecord(row.metadata);
+  const trust = scoreTrustFromMetadata(metadata);
   return {
     entryId: row.entry_id,
     userId: row.user_id,
@@ -169,12 +195,13 @@ function mapScore(row: EntryScoreRow): EntryScore {
     bonusPoints: Number(row.bonus_points ?? 0),
     confidence: Number(row.confidence ?? 0),
     scoringSource: row.scoring_source,
+    ...trust,
     aiSubtext: row.ai_subtext,
     scoringExplanation: row.scoring_explanation,
     modelName: row.model_name,
     flagged: row.flagged,
     flagReason: row.flag_reason,
-    metadata: asRecord(row.metadata),
+    metadata,
     scoredAt: row.scored_at,
     updatedAt: row.updated_at,
   };
@@ -281,11 +308,24 @@ async function hydrateEntryRows(rows: EntryRow[]): Promise<EntryWithScore[]> {
     }),
   );
 
-  return rows.map((row) => ({
-    ...mapEntry(row),
-    score: scoreByEntryId.get(row.id) ?? null,
-    media: mediaByEntryId.get(row.id) ?? [],
-  }));
+  return rows.map((row) => {
+    const entry = mapEntry(row);
+    const score = scoreByEntryId.get(row.id);
+    const hydratedScore =
+      score && !score.metadata.proof_type
+        ? {
+            ...score,
+            ...scoreTrustFromMetadata(entry.metadata),
+            metadata: { ...entry.metadata, ...score.metadata },
+          }
+        : score;
+
+    return {
+      ...entry,
+      score: hydratedScore ?? null,
+      media: mediaByEntryId.get(row.id) ?? [],
+    };
+  });
 }
 
 export async function getEntriesForDate(userId: string, date: string | Date) {
@@ -373,7 +413,25 @@ export async function createManualEntry(input: CreateManualEntryInput) {
     throw new Error('Pick or enter an activity before submitting.');
   }
 
-  const consumesProof = shouldSpendProof(input.metadata);
+  const proofType: ProofType = input.proofType ?? 'manual_note';
+  const trustLevel = input.trustLevel ?? trustLevelForProof(proofType);
+  const verificationMethod = input.verificationMethod ?? verificationMethodForProof(proofType);
+  const proofMetadata = buildProofMetadata({
+    proofType,
+    verificationMethod,
+    trustLevel,
+    rankedEligible: input.rankedEligible,
+    scoreRequested: input.scoreRequested ?? proofType !== 'manual_note',
+    consumesDailyProof: input.consumesDailyProof ?? proofType !== 'manual_note',
+  });
+  const metadata = {
+    ...(input.metadata ?? {}),
+    ...proofMetadata,
+    entry_engine_version: 1,
+    capture_surface: proofType === 'manual_note' ? 'manual_note' : 'quick_proof',
+  };
+  const consumesProof = shouldSpendProof(metadata);
+  const scoreRequested = shouldRequestScore(metadata);
   if (consumesProof) {
     const proofCheck = await canSpendProof(input.userId);
     if (!proofCheck.canSpend) {
@@ -387,7 +445,7 @@ export async function createManualEntry(input: CreateManualEntryInput) {
     .insert({
       id: entryId,
       user_id: input.userId,
-      entry_type: 'manual',
+      entry_type: persistedEntryTypeForProof(proofType),
       activity_tag: activityTag,
       caption: normalizeOptional(input.caption),
       location_name: normalizeOptional(input.locationName, 120),
@@ -395,13 +453,9 @@ export async function createManualEntry(input: CreateManualEntryInput) {
       longitude: input.longitude ?? null,
       wellness_pillar: input.wellnessPillar ?? null,
       visibility: input.visibility ?? 'friends',
-      status: 'pending_score',
+      status: scoreRequested ? 'pending_score' : 'draft',
       occurred_at: input.occurredAt ?? new Date().toISOString(),
-      metadata: {
-        ...(input.metadata ?? {}),
-        entry_engine_version: 1,
-        capture_surface: 'manual_check_in',
-      },
+      metadata,
     });
 
   if (error) {
@@ -419,7 +473,13 @@ export async function createManualEntry(input: CreateManualEntryInput) {
     }
   }
 
-  await requestEntryScore(entryId);
+  noteVerification({
+    method: verificationMethod,
+    trust: `${trustLevel}:${trustWeightForLevel(trustLevel)}`,
+  });
+  if (scoreRequested) {
+    await requestEntryScore(entryId);
+  }
   clearEntryInsertError();
   return getEntryWithScore(entryId);
 }
@@ -480,25 +540,31 @@ export async function uploadEntryPhoto(input: UploadEntryPhotoInput) {
     throw mediaError;
   }
 
-  const base64 =
-    input.base64 ??
-    (await FileSystem.readAsStringAsync(input.uri, {
-      encoding: FileSystem.EncodingType.Base64,
-    }));
+  try {
+    const base64 =
+      input.base64 ??
+      (await FileSystem.readAsStringAsync(input.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      }));
 
-  const { error: uploadError } = await supabase.storage
-    .from(STORAGE_BUCKETS.entryProofs)
-    .upload(objectPath, decode(cleanBase64(base64)), {
-      contentType: mimeType,
-      upsert: false,
-    });
+    const { error: uploadError } = await supabase.storage
+      .from(STORAGE_BUCKETS.entryProofs)
+      .upload(objectPath, decode(cleanBase64(base64)), {
+        contentType: mimeType,
+        upsert: false,
+      });
 
-  if (uploadError) {
+    if (uploadError) {
+      throw uploadError;
+    }
+  } catch (uploadError) {
     await supabase.from('entry_media').delete().eq('id', mediaId).eq('user_id', input.userId);
+    noteStorageUploadError(uploadError);
     noteEntryInsertError(uploadError);
     throw uploadError;
   }
 
+  clearStorageUploadError();
   return getSignedMedia(mediaRow);
 }
 
@@ -510,7 +576,24 @@ export async function createPhotoEntry(input: CreatePhotoEntryInput) {
     throw new Error('Add an activity before submitting photo proof.');
   }
 
-  const consumesProof = shouldSpendProof(input.metadata);
+  const proofType: ProofType = input.proofType ?? 'photo';
+  const trustLevel = input.trustLevel ?? trustLevelForProof(proofType);
+  const verificationMethod = input.verificationMethod ?? verificationMethodForProof(proofType);
+  const metadata = {
+    ...(input.metadata ?? {}),
+    ...buildProofMetadata({
+      proofType,
+      verificationMethod,
+      trustLevel,
+      rankedEligible: input.rankedEligible,
+      scoreRequested: input.scoreRequested ?? true,
+      consumesDailyProof: input.consumesDailyProof ?? true,
+    }),
+    entry_engine_version: 1,
+    capture_surface: proofType === 'hybrid' ? 'hybrid_photo_proof' : 'photo_proof',
+  };
+  const consumesProof = shouldSpendProof(metadata);
+  const scoreRequested = shouldRequestScore(metadata);
   if (consumesProof) {
     const proofCheck = await canSpendProof(input.userId);
     if (!proofCheck.canSpend) {
@@ -532,13 +615,9 @@ export async function createPhotoEntry(input: CreatePhotoEntryInput) {
       longitude: input.longitude ?? null,
       wellness_pillar: input.wellnessPillar ?? null,
       visibility: input.visibility ?? 'friends',
-      status: 'pending_score',
+      status: scoreRequested ? 'pending_score' : 'draft',
       occurred_at: input.occurredAt ?? new Date().toISOString(),
-      metadata: {
-        ...(input.metadata ?? {}),
-        entry_engine_version: 1,
-        capture_surface: 'photo_proof',
-      },
+      metadata,
     });
 
   if (error) {
@@ -577,8 +656,15 @@ export async function createPhotoEntry(input: CreatePhotoEntryInput) {
     }
   }
 
-  await requestEntryScore(entryId);
+  noteVerification({
+    method: verificationMethod,
+    trust: `${trustLevel}:${trustWeightForLevel(trustLevel)}`,
+  });
+  if (scoreRequested) {
+    await requestEntryScore(entryId);
+  }
   clearEntryInsertError();
+  clearStorageUploadError();
   return getEntryWithScore(entryId);
 }
 
@@ -588,9 +674,13 @@ export function summarizeEntryDay(
 ): EntryDaySummary {
   const derived = entries.reduce<Record<WellnessPillar, number>>(
     (totals, entry) => {
+      if (!isEntryRankedEligible(entry)) {
+        return totals;
+      }
       const pillar = entry.score?.wellnessPillar ?? entry.wellnessPillar;
-      if (pillar && entry.score) {
-        totals[pillar] += entry.score.points;
+      const displayScore = getEntryDisplayScore(entry);
+      if (pillar && displayScore.points) {
+        totals[pillar] += displayScore.points;
       }
       return totals;
     },
@@ -616,6 +706,8 @@ export function summarizeEntryDay(
     source: dailyScore ? 'daily_score' : 'entry_scores',
     pillars,
     completedPillars,
-    pendingCount: entries.filter((entry) => !entry.score || entry.status === 'pending_score').length,
+    pendingCount: entries.filter(
+      (entry) => isEntryRankedEligible(entry) && getEntryDisplayScore(entry).pending,
+    ).length,
   };
 }

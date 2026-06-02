@@ -54,7 +54,7 @@ export function ProofSpendModal({
                 ? 'Apply the Daily Proof migration in Supabase before this economy can enforce spending.'
                 : out
                   ? 'Earn more tomorrow or unlock more with Pro. Sharing today can earn +1 when available.'
-                  : `This check-in will spend 1 of your ${remaining} remaining Daily Proofs.`}
+                  : `This verified score attempt will spend 1 of your ${remaining} remaining Daily Proofs.`}
             </Text>
           </View>
 

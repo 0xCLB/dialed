@@ -3,6 +3,12 @@ import { z } from 'zod';
 
 import { logoutRevenueCat } from '@/lib/revenuecat';
 import { supabase } from '@/lib/supabase';
+import {
+  clearAuthError,
+  clearProfileError,
+  noteAuthError,
+  noteProfileError,
+} from '@/features/dev/diagnosticsStore';
 import type { Profile } from '@/types/domain';
 
 export const emailSchema = z.string().trim().email('Enter a valid email address');
@@ -83,8 +89,10 @@ export async function signUpWithEmail(email: string, password: string) {
   });
 
   if (error) {
+    noteAuthError(error);
     throw error;
   }
+  clearAuthError();
 
   if (data.session?.user) {
     await ensureProfileForUser(data.session.user);
@@ -102,8 +110,10 @@ export async function signInWithEmail(email: string, password: string) {
   });
 
   if (error) {
+    noteAuthError(error);
     throw error;
   }
+  clearAuthError();
 
   if (data.user) {
     await ensureProfileForUser(data.user);
@@ -115,24 +125,30 @@ export async function signInWithEmail(email: string, password: string) {
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) {
+    noteAuthError(error);
     throw error;
   }
+  clearAuthError();
   logoutRevenueCat().catch(() => undefined);
 }
 
 export async function getSession() {
   const { data, error } = await supabase.auth.getSession();
   if (error) {
+    noteAuthError(error);
     throw error;
   }
+  clearAuthError();
   return data.session;
 }
 
 export async function getUser() {
   const { data, error } = await supabase.auth.getUser();
   if (error) {
+    noteAuthError(error);
     throw error;
   }
+  clearAuthError();
   return data.user;
 }
 
@@ -140,9 +156,11 @@ export async function getProfile(userId: string) {
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
 
   if (error) {
+    noteProfileError(error);
     throw error;
   }
 
+  clearProfileError();
   return data ? mapProfile(data as ProfileRow) : null;
 }
 
@@ -168,9 +186,11 @@ export async function ensureProfileForUser(user: User) {
     if ('code' in error && error.code === '23505') {
       return getProfile(user.id);
     }
+    noteProfileError(error);
     throw error;
   }
 
+  clearProfileError();
   return mapProfile(data as ProfileRow);
 }
 
@@ -202,8 +222,10 @@ export async function completeOnboarding({
   });
 
   if (profileError) {
+    noteProfileError(profileError);
     throw profileError;
   }
+  clearProfileError();
 }
 
 export async function signInWithPhoneOtp(_phone: string): Promise<never> {

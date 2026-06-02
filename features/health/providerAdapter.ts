@@ -29,8 +29,8 @@ const WEARABLE_STUBS: Array<{
   { id: 'fitbit', label: 'Fitbit', metrics: ['steps', 'workout', 'sleep', 'heart_rate'] },
   { id: 'oura', label: 'Oura', metrics: ['sleep', 'hrv', 'recovery', 'heart_rate'], pro: true },
   { id: 'garmin', label: 'Garmin', metrics: ['steps', 'workout', 'sleep', 'heart_rate'], pro: true },
-  { id: 'strava', label: 'Strava', metrics: ['workout'], pro: true },
   { id: 'whoop', label: 'WHOOP', metrics: ['sleep', 'hrv', 'recovery', 'heart_rate'], pro: true },
+  { id: 'strava', label: 'Strava', metrics: ['workout'], pro: true },
 ];
 
 function comingSoonStatus(provider: HealthProvider, label: string): HealthSyncStatus {

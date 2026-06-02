@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { router } from 'expo-router';
-import { Camera, HeartPulse, ListPlus, Trophy, UsersRound } from 'lucide-react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { Camera, HeartPulse, ListPlus, MapPin, Trophy, UsersRound, Utensils } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
@@ -125,9 +125,11 @@ export default function HomeScreen() {
     }
   }, [profile?.isPro, pro.isPro, session?.user.id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   const summary: DaySummary = useMemo(
     () => recomputeLocalDaySummary(entries, undefined, undefined, dailyScore),
@@ -224,7 +226,7 @@ export default function HomeScreen() {
       router.push(`/digest/${generated.digestDate}`);
     } catch (generateError) {
       const message =
-        generateError instanceof Error ? generateError.message : 'Digest generation failed.';
+        generateError instanceof Error ? generateError.message : 'Daily Recap generation failed.';
       setDigestError(message);
     } finally {
       setDigestLoading(false);
@@ -277,7 +279,7 @@ export default function HomeScreen() {
               </Text>
             </View>
             <Text variant="caption" muted>
-              {competitionCopy} Use your Proofs wisely.
+              {competitionCopy} Verified proofs move ranked score.
             </Text>
           </Card>
           <ShareCTAButton
@@ -357,15 +359,25 @@ export default function HomeScreen() {
           ) : null}
 
           <Card style={styles.actions}>
-            <Button onPress={() => router.push('/(tabs)/capture')}>
-              <Camera size={18} color={theme.colors.white} />
-              Capture proof
+            <Button onPress={() => router.push('/(tabs)/check-in')}>
+              <ListPlus size={18} color={theme.colors.white} />
+              Log Proof
             </Button>
-            <Button variant="secondary" onPress={() => router.push('/(tabs)/check-in')}>
-              <ListPlus size={18} color={theme.colors.ink} />
-              Manual check-in
+            <Button variant="secondary" onPress={() => router.push('/(tabs)/capture')}>
+              <Camera size={18} color={theme.colors.ink} />
+              Photo Proof
             </Button>
-            <ShareCTAButton label="Share digest quote" onPress={handleShareDigest} />
+            <Button
+              variant="secondary"
+              onPress={() => router.push({ pathname: '/(tabs)/capture', params: { mode: 'food' } })}>
+              <Utensils size={18} color={theme.colors.ink} />
+              Food Proof
+            </Button>
+            <Button variant="secondary" onPress={() => router.push('/settings/health')}>
+              <HeartPulse size={18} color={theme.colors.ink} />
+              Health Proof
+            </Button>
+            <ShareCTAButton label="Share recap quote" onPress={handleShareDigest} />
           </Card>
 
           <View style={styles.sectionHeader}>
@@ -412,12 +424,37 @@ export default function HomeScreen() {
                   <ListPlus size={18} color={theme.colors.white} />
                   Log First Proof
                 </Button>
+              </View>
+              <View style={styles.emptyActions}>
                 <Button
                   variant="secondary"
                   onPress={() => router.push('/(tabs)/capture')}
-                  style={styles.emptyButton}>
+                  style={styles.emptySubButton}>
                   <Camera size={18} color={theme.colors.ink} />
                   Photo
+                </Button>
+                <Button
+                  variant="secondary"
+                  onPress={() => router.push({ pathname: '/(tabs)/capture', params: { mode: 'food' } })}
+                  style={styles.emptySubButton}>
+                  <Utensils size={18} color={theme.colors.ink} />
+                  Food
+                </Button>
+              </View>
+              <View style={styles.emptyActions}>
+                <Button
+                  variant="secondary"
+                  onPress={() => router.push('/settings/health')}
+                  style={styles.emptySubButton}>
+                  <HeartPulse size={18} color={theme.colors.ink} />
+                  Health
+                </Button>
+                <Button
+                  variant="secondary"
+                  onPress={() => router.push('/(tabs)/check-in')}
+                  style={styles.emptySubButton}>
+                  <MapPin size={18} color={theme.colors.ink} />
+                  Location
                 </Button>
               </View>
             </Card>
@@ -504,6 +541,10 @@ const styles = StyleSheet.create({
   },
   emptyButton: {
     flex: 1,
+  },
+  emptySubButton: {
+    flex: 1,
+    minHeight: 48,
   },
   digestError: {
     color: theme.colors.danger,

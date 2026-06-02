@@ -1,6 +1,27 @@
 export type WellnessPillar = 'movement' | 'fuel' | 'mind' | 'recovery';
 
-export type EntryType = 'photo' | 'manual' | 'health' | 'location';
+export type PersistedEntryType = 'photo' | 'manual' | 'health' | 'location';
+
+export type EntryType = PersistedEntryType | 'hybrid' | 'manual_note';
+
+export type ProofType = 'photo' | 'location' | 'health' | 'hybrid' | 'manual_note';
+
+export type VerificationMethod = 'photo' | 'location' | 'health' | 'hybrid' | 'manual_note';
+
+export type ProofTrustLevel =
+  | 'verified_health'
+  | 'photo_ai'
+  | 'photo_location'
+  | 'location_only'
+  | 'manual_note';
+
+export const PROOF_TRUST_WEIGHTS: Record<ProofTrustLevel, number> = {
+  verified_health: 1,
+  photo_ai: 0.85,
+  photo_location: 0.95,
+  location_only: 0.65,
+  manual_note: 0.15,
+};
 
 export type EntryVisibility = 'private' | 'friends' | 'public' | 'challenge';
 
@@ -49,6 +70,9 @@ export type EntryScore = {
   bonusPoints: number;
   confidence: number;
   scoringSource: 'ai' | 'manual_review' | 'health' | 'rule';
+  trustLevel: ProofTrustLevel;
+  trustWeight: number;
+  rankedEligible: boolean;
   aiSubtext: string | null;
   scoringExplanation: string | null;
   modelName: string | null;
@@ -91,6 +115,12 @@ export type CreateManualEntryInput = {
   locationName?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  proofType?: ProofType;
+  verificationMethod?: VerificationMethod;
+  trustLevel?: ProofTrustLevel;
+  rankedEligible?: boolean;
+  scoreRequested?: boolean;
+  consumesDailyProof?: boolean;
   metadata?: Record<string, unknown>;
 };
 

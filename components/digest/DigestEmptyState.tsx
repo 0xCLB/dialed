@@ -17,12 +17,12 @@ export function DigestEmptyState({
       <View style={styles.icon}>
         <Sparkles size={24} color={theme.colors.primary} />
       </View>
-      <Text variant="subtitle">No digest yet</Text>
+      <Text variant="subtitle">No recap yet</Text>
       <Text muted style={styles.copy}>
-        Not enough proof to judge the empire yet. Generate one now, or log a few more wins.
+        Not enough proof to judge the empire yet. Generate a recap now, or log a few more wins.
       </Text>
       <Button loading={loading} onPress={onGenerate}>
-        Generate Digest
+        Generate Recap
       </Button>
     </View>
   );

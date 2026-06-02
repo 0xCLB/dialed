@@ -1,15 +1,27 @@
 import { StyleSheet, View } from 'react-native';
-import { Sparkles } from 'lucide-react-native';
+import { Clock3, Sparkles } from 'lucide-react-native';
 
 import { Text } from '@/components/ui/Text';
 import { theme } from '@/components/ui/theme';
 
-export function PointsBadge({ points, pending }: { points?: number | null; pending?: boolean }) {
+export function PointsBadge({
+  points,
+  pending,
+  basic,
+}: {
+  points?: number | null;
+  pending?: boolean;
+  basic?: boolean;
+}) {
+  const hasBasicScore = Boolean(pending && basic && points !== null && points !== undefined);
+  const label = hasBasicScore ? `Basic +${points} DP` : pending ? 'Scoring...' : `${points ?? 0} DP`;
+  const iconColor = pending ? theme.colors.muted : theme.colors.primary;
+
   return (
-    <View style={[styles.badge, pending && styles.pending]}>
-      <Sparkles size={14} color={pending ? theme.colors.muted : theme.colors.primary} />
+    <View style={[styles.badge, pending && styles.pending, hasBasicScore && styles.basic]}>
+      {pending ? <Clock3 size={14} color={iconColor} /> : <Sparkles size={14} color={iconColor} />}
       <Text variant="caption" style={pending ? styles.pendingText : styles.text}>
-        {pending ? 'Scoring...' : `${points ?? 0} DP`}
+        {label}
       </Text>
     </View>
   );
@@ -27,6 +39,9 @@ const styles = StyleSheet.create({
   },
   pending: {
     backgroundColor: theme.colors.surfaceAlt,
+  },
+  basic: {
+    backgroundColor: theme.colors.warningSoft,
   },
   text: {
     color: theme.colors.primary,

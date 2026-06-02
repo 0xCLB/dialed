@@ -11,15 +11,33 @@ import { Text } from '@/components/ui/Text';
 import { theme } from '@/components/ui/theme';
 import { PillarChip } from '@/components/entries/PillarChip';
 import { PointsBadge } from '@/components/entries/PointsBadge';
+import { FoodAnalysisCard } from '@/components/food/FoodAnalysisCard';
 import { LockedFeatureCard } from '@/components/monetization/LockedFeatureCard';
+import { ScoreResultCard } from '@/components/scoring/ScoreResultCard';
 import { ReactionBar } from '@/components/social/ReactionBar';
 import { useRequireSession } from '@/features/auth/useRequireSession';
 import { getEntryWithScore } from '@/features/entries/entryService';
+import {
+  entryProofLabel,
+  getEntryProofType,
+  getEntryTrustLevel,
+  getEntryTrustWeight,
+  getEntryVerificationMethod,
+  isManualNote,
+  verificationMethodLabel,
+} from '@/features/entries/proofPolicy';
+import {
+  getFoodAnalysisForEntry,
+  isFoodProof,
+} from '@/features/food/foodAnalysisService';
+import type { FoodAnalysisResult } from '@/features/food/types';
+import { getEntryDisplayScore } from '@/features/scoring/basicScoring';
 import { usePro } from '@/features/monetization/usePro';
 import { reactToEntry, removeReaction } from '@/features/social/socialService';
 import { buildEntryShareData } from '@/features/sharing/shareDataService';
 import { SharePreviewModal } from '@/components/sharing/SharePreviewModal';
 import type { EntryWithScore, WellnessPillar } from '@/features/entries/types';
+import type { ProofType, ScoreResult, ScoringSource, TrustLevel } from '@/features/scoring/types';
 import type { ReactionType } from '@/features/social/types';
 import type { ShareCardData } from '@/features/sharing/types';
 
@@ -28,6 +46,7 @@ export default function EntryDetailScreen() {
   const pro = usePro();
   const params = useLocalSearchParams<{ id?: string }>();
   const [entry, setEntry] = useState<EntryWithScore | null>(null);
+  const [foodAnalysis, setFoodAnalysis] = useState<FoodAnalysisResult | null>(null);
   const [activeReactions, setActiveReactions] = useState<ReactionType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +60,22 @@ export default function EntryDetailScreen() {
     setLoading(true);
     setError(null);
     try {
-      setEntry(await getEntryWithScore(params.id));
+      const loadedEntry = await getEntryWithScore(params.id);
+      setEntry(loadedEntry);
+      if (isFoodProof(loadedEntry)) {
+        const analysis = await getFoodAnalysisForEntry(loadedEntry.id).catch(() => null);
+        setFoodAnalysis(
+          analysis
+            ? { ok: true, analysis }
+            : {
+                ok: false,
+                status: 'pending',
+                message: 'Food analysis pending. Estimated macros appear here when the edge function writes them.',
+              },
+        );
+      } else {
+        setFoodAnalysis(null);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Entry failed to load.');
     } finally {
@@ -54,7 +88,43 @@ export default function EntryDetailScreen() {
   }
 
   function entryTitle(value: EntryWithScore) {
-    return value.activityTag?.replace(/[_-]+/g, ' ') ?? 'Dialed proof';
+    return value.activityTag?.replace(/[_-]+/g, ' ') ?? entryProofLabel(value);
+  }
+
+  function scoreSource(value: EntryWithScore): ScoringSource {
+    if (value.score?.scoringSource === 'health') return 'health';
+    if (value.score?.scoringSource === 'rule') return 'rule';
+    if (value.score) return 'edge_function';
+    return 'rule';
+  }
+
+  function scoreResultForEntry(value: EntryWithScore): ScoreResult {
+    const display = getEntryDisplayScore(value);
+    const proofType: ProofType = isFoodProof(value)
+      ? 'food_photo'
+      : (getEntryProofType(value) as ProofType);
+    const trustLevel: TrustLevel = display.pending && !display.basic
+      ? 'pending'
+      : (getEntryTrustLevel(value) as TrustLevel);
+    return {
+      entryId: value.id,
+      proofType,
+      trustLevel,
+      wellnessPillar: entryPillar(value),
+      points: display.points ?? 0,
+      basePoints: value.score?.basePoints ?? display.points ?? 0,
+      bonusPoints: value.score?.bonusPoints ?? 0,
+      confidence: value.score?.confidence ?? getEntryTrustWeight(value),
+      explanation: isManualNote(value)
+        ? 'Manual self-reporting is saved as context. Verified photo, location, health, or hybrid proof drives ranked scoring.'
+        : value.score?.scoringExplanation ?? display.detail,
+      status: value.score ? 'scored' : display.basic ? 'fallback' : 'pending',
+      source: scoreSource(value),
+      rankedEligible: display.rankedEligible,
+      normalizedActivity: value.score?.normalizedActivity ?? value.activityTag,
+      subtext: value.score?.aiSubtext ?? (isManualNote(value) ? 'Proof > promises.' : display.label),
+      metadata: value.metadata,
+    };
   }
 
   useEffect(() => {
@@ -87,6 +157,8 @@ export default function EntryDetailScreen() {
     setShareVisible(true);
   }
 
+  const displayScore = entry ? getEntryDisplayScore(entry) : null;
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -104,7 +176,7 @@ export default function EntryDetailScreen() {
 
       {loading ? <LoadingState label="Loading proof" /> : null}
       {error ? <ErrorState message={error} onRetry={load} /> : null}
-      {entry ? (
+      {entry && displayScore ? (
         <>
           <Card style={styles.card}>
             <PillarChip pillar={entryPillar(entry)} />
@@ -112,40 +184,52 @@ export default function EntryDetailScreen() {
               <Image source={{ uri: entry.media[0].signedUrl }} style={styles.image} />
             ) : null}
             <Text variant="title" style={styles.title}>{entryTitle(entry)}</Text>
+            <Text variant="caption" style={styles.proofBadge}>
+              {entryProofLabel(entry)} · {verificationMethodLabel(getEntryVerificationMethod(entry))} · {Math.round(getEntryTrustWeight(entry) * 100)}% trust
+            </Text>
             {entry.caption ? <Text muted>{entry.caption}</Text> : null}
             {entry.score?.aiSubtext ? <Text>{entry.score.aiSubtext}</Text> : null}
             <View style={styles.scoreRow}>
-              <PointsBadge points={entry.score?.points} pending={!entry.score} />
+              {isManualNote(entry) ? (
+                <Text variant="caption" style={styles.contextBadge}>
+                  Context only
+                </Text>
+              ) : (
+                <PointsBadge
+                  points={displayScore.points}
+                  pending={displayScore.pending}
+                  basic={displayScore.basic}
+                />
+              )}
               <View style={styles.scoreCopy}>
                 <Text variant="caption" muted>
-                  Dialed Points
+                  {displayScore.rankedEligible ? 'Ranked eligible' : 'Not ranked'}
                 </Text>
                 <Text variant="caption" muted>
-                  {entry.score
+                  {isManualNote(entry)
+                    ? 'Manual notes support timeline and recap context'
+                    : entry.score
                     ? `${Math.round(entry.score.confidence * 100)}% confidence`
-                    : 'Scoring pending'} · {entry.status}
+                    : displayScore.detail} · {entry.status}
                 </Text>
               </View>
             </View>
           </Card>
 
-          <Card style={styles.card}>
-            <Text variant="subtitle">Score breakdown</Text>
-            <Text muted>
-              {entry.score?.scoringExplanation ?? 'Scoring is pending. Your proof is saved.'}
-            </Text>
-          </Card>
+          <ScoreResultCard result={scoreResultForEntry(entry)} />
+
+          {isFoodProof(entry) ? <FoodAnalysisCard result={foodAnalysis} /> : null}
 
           {pro.isPro ? (
             <Card style={styles.card}>
-              <Text variant="subtitle">Advanced AI explanation</Text>
+              <Text variant="subtitle">Advanced Proof Analysis</Text>
               <Text muted>
                 Pro scoring detail is staged here: proof quality, context, streak effect, and comparable actions.
               </Text>
             </Card>
           ) : (
             <LockedFeatureCard
-              title="Advanced AI explanation"
+              title="Advanced Proof Analysis"
               body="Pro will unpack proof quality, context, streak effects, and why this earned what it earned."
               onPress={() => pro.openPaywall('advanced_insights')}
             />
@@ -194,5 +278,23 @@ const styles = StyleSheet.create({
   },
   scoreCopy: {
     flex: 1,
+  },
+  proofBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    overflow: 'hidden',
+    color: theme.colors.primaryDark,
+    backgroundColor: theme.colors.primarySoft,
+  },
+  contextBadge: {
+    minHeight: 30,
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    overflow: 'hidden',
+    color: theme.colors.muted,
+    backgroundColor: theme.colors.surfaceAlt,
   },
 });

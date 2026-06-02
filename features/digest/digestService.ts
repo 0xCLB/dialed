@@ -91,7 +91,7 @@ function mapProfile(row: ProfileRow | null | undefined): ProfileSummary | null {
 async function getAuthenticatedUserId() {
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
-  if (!data.user) throw new Error('You must be signed in to view your digest.');
+  if (!data.user) throw new Error('You must be signed in to view your Daily Recap.');
   return data.user.id;
 }
 
@@ -143,7 +143,7 @@ function buildRecommendation(input: DigestInputSummary): DigestRecommendation {
     },
     fuel: {
       title: 'Make Fuel less mysterious',
-      body: 'Water, protein, or a clean meal check-in is enough to wake the pillar up.',
+      body: 'Water, protein, or a clean meal proof is enough to wake the pillar up.',
       actionLabel: 'Log fuel',
     },
     mind: {
@@ -461,7 +461,7 @@ export function fallbackDigestGenerator(input: DigestInputSummary): DailyDigest 
 
   return digestFromPayload({
     input,
-    title: input.entries.length === 0 ? 'The Empire Needs Evidence' : 'TwainGPT Daily Digest',
+    title: input.entries.length === 0 ? 'The Empire Needs Evidence' : 'Daily Recap',
     body: buildBody(input),
     tone: 'twain',
     rawInsights,
@@ -528,7 +528,7 @@ export async function generateDigestForDate(date: string | Date = new Date()) {
     const rawInsights = mergeEdgeInsights(edge, input);
     const digest = digestFromPayload({
       input,
-      title: edge.title ?? 'TwainGPT Daily Digest',
+      title: edge.title ?? 'Daily Recap',
       body: edge.body ?? buildBody(input),
       tone: edge.tone ?? 'twain',
       rawInsights,
@@ -567,7 +567,7 @@ export async function generateDigestForDate(date: string | Date = new Date()) {
 
 export function getWeeklyDigestPlaceholder() {
   return {
-    title: 'Weekly TwainGPT Digest',
+    title: 'Weekly Recap',
     body: 'Seven days, one verdict. This becomes a Pro recap once weekly aggregation is wired.',
     locked: true,
     hooks: ['weekly_reels', 'premium_digest_archive', 'smart_recommendations'],

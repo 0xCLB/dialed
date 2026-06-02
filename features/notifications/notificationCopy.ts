@@ -14,7 +14,7 @@ export function friendEntryCopy(candidate: SmartNotificationCandidate) {
   const pillar = candidate.pillar ? PILLARS[candidate.pillar].label : 'wellness';
   const choices = [
     `${actor} logged ${activity(candidate)}. The scoreboard noticed.`,
-    `${actor} just hit a ${pillar} check-in. Your move.`,
+    `${actor} just posted ${pillar} proof. Your move.`,
     `${actor} posted proof. Quietly hostile productivity.`,
   ];
 
@@ -35,14 +35,14 @@ export function leaderboardCopy(candidate: SmartNotificationCandidate) {
   }
 
   if (candidate.rankDelta && candidate.rankDelta > 0) {
-    return `You moved up ${candidate.rankDelta} spots. Keep the receipts coming.`;
+    return `You moved up ${candidate.rankDelta} spots. Keep the proof coming.`;
   }
 
   if (candidate.pillar) {
     return `${PILLARS[candidate.pillar].label} could put you ahead today.`;
   }
 
-  return "You're one check-in from top 3.";
+  return "You're one verified proof from top 3.";
 }
 
 export function streakCopy(candidate: SmartNotificationCandidate) {
@@ -82,7 +82,7 @@ export function buildNotificationCopy(candidate: SmartNotificationCandidate) {
     return { title: 'Streak watch', body: streakCopy(candidate) };
   }
   if (candidate.type === 'digest') {
-    return { title: 'TwainGPT Digest', body: digestCopy() };
+    return { title: 'Daily Recap', body: digestCopy() };
   }
   if (candidate.type === 'reaction') {
     return { title: 'New reaction', body: reactionCopy(candidate) };

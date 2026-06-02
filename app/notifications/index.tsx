@@ -117,7 +117,7 @@ export default function NotificationsScreen() {
       {!loading && !error && notifications.length === 0 ? (
         <EmptyState
           title="Quiet right now"
-          body="Friend proofs, leaderboard moves, streak saves, reactions, and digest drops appear here."
+          body="Friend proofs, leaderboard moves, streak saves, reactions, and recap drops appear here."
         />
       ) : null}
 

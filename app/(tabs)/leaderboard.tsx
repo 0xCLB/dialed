@@ -82,7 +82,7 @@ export default function LeaderboardScreen() {
       <View style={styles.header}>
         <View>
           <Text variant="title">Leaderboard</Text>
-          <Text muted>Friends first. Bragging rights optional, but encouraged.</Text>
+          <Text muted>Ranked score favors verified proof. Notes do not move the board.</Text>
         </View>
       </View>
 
@@ -110,10 +110,13 @@ export default function LeaderboardScreen() {
             <Text variant="subtitle">Friends</Text>
             <Text muted>
               {range === 'daily'
-                ? 'Today’s race'
+                ? 'Today’s verified race'
                 : range === 'weekly'
                   ? 'This week, derived from daily scores'
                   : 'Recent all-time placeholder'}
+            </Text>
+            <Text variant="caption" muted>
+              Photo, location, health, and hybrid proofs carry ranking weight.
             </Text>
           </View>
         </View>

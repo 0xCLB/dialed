@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui/Text';
 import { theme } from '@/components/ui/theme';
 
-export function DigestLoadingState({ label = 'Summoning TwainGPT' }: { label?: string }) {
+export function DigestLoadingState({ label = 'Building Daily Recap' }: { label?: string }) {
   return (
     <View style={styles.wrap}>
       <ActivityIndicator color={theme.colors.primary} />

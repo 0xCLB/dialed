@@ -29,10 +29,18 @@ import { track } from '@/lib/analytics';
 export const PRO_FEATURES: ProFeature[] = [
   {
     id: 'advanced_ai_scoring',
-    title: 'Premium AI insights',
-    description: 'More context behind why an action scored the way it did.',
+    title: 'Premium Proof Analysis',
+    description: 'More context behind why an action scored the way it did, including deeper food analysis.',
     placement: 'advanced_insights',
     available: true,
+  },
+  {
+    id: 'advanced_food_analysis',
+    title: 'Advanced food analysis',
+    description: 'Deeper macro estimates, Fuel quality, and meal context when Food Proof matures.',
+    placement: 'advanced_insights',
+    available: false,
+    placeholder: true,
   },
   {
     id: 'premium_share_templates',
@@ -50,7 +58,7 @@ export const PRO_FEATURES: ProFeature[] = [
   },
   {
     id: 'weekly_digest',
-    title: 'Weekly TwainGPT digest',
+    title: 'Weekly Recap',
     description: 'A smarter weekly recap when daily proof turns into a pattern.',
     placement: 'weekly_digest',
     available: false,

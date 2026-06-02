@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { Bell, Film, HeartPulse, Settings } from 'lucide-react-native';
+import { Bell, Film, HeartPulse, Settings, Utensils, Watch } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
@@ -22,8 +22,8 @@ import { SharePreviewModal } from '@/components/sharing/SharePreviewModal';
 import { useAuth } from '@/features/auth/useAuth';
 import { listRecentEntries } from '@/features/entries/entryService';
 import type { EntryWithScore } from '@/features/entries/types';
-import { getTodayHealthSummary } from '@/features/health/healthService';
-import type { HealthTodaySummary } from '@/features/health/types';
+import { getConnectedProviders, getTodayHealthSummary } from '@/features/health/healthService';
+import type { HealthProviderConnection, HealthTodaySummary } from '@/features/health/types';
 import { usePro } from '@/features/monetization/usePro';
 import {
   getRecentDailyScores,
@@ -45,6 +45,7 @@ export default function ProfileScreen() {
   const [scores, setScores] = useState<DailyScore[]>([]);
   const [streak, setStreak] = useState<Streak | null>(null);
   const [healthSummary, setHealthSummary] = useState<HealthTodaySummary | null>(null);
+  const [healthConnections, setHealthConnections] = useState<HealthProviderConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
@@ -62,16 +63,18 @@ export default function ProfileScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [recentEntries, recentScores, userStreak, todayHealthSummary] = await Promise.all([
+      const [recentEntries, recentScores, userStreak, todayHealthSummary, connectedProviders] = await Promise.all([
         listRecentEntries(session.user.id, 10),
         getRecentDailyScores(session.user.id, 30),
         getUserStreak(session.user.id),
         getTodayHealthSummary(session.user.id).catch(() => null),
+        getConnectedProviders(session.user.id).catch(() => []),
       ]);
       setEntries(recentEntries);
       setScores(recentScores);
       setStreak(userStreak);
       setHealthSummary(todayHealthSummary);
+      setHealthConnections(connectedProviders);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Profile progress did not load.');
     } finally {
@@ -255,6 +258,46 @@ export default function ProfileScreen() {
             <Button variant="secondary" onPress={() => router.push('/settings/health')}>
               Manage health sources
             </Button>
+          </Card>
+
+          <Card style={styles.card}>
+            <View style={styles.sectionHeader}>
+              <Text variant="subtitle">Connected data sources</Text>
+              <Text variant="caption" muted>
+                verified inputs
+              </Text>
+            </View>
+            <View style={styles.sourceRow}>
+              <HeartPulse size={18} color={theme.colors.primary} />
+              <View style={styles.sourceCopy}>
+                <Text>Apple Health</Text>
+                <Text variant="caption" muted>
+                  {healthConnections.find((item) => item.provider === 'apple_health')?.available
+                    ? healthSummary?.sampleCount
+                      ? 'Synced today'
+                      : 'Available'
+                    : 'Needs iPhone development build'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.sourceRow}>
+              <Utensils size={18} color={theme.colors.primary} />
+              <View style={styles.sourceCopy}>
+                <Text>Food Proof</Text>
+                <Text variant="caption" muted>
+                  Photo macro estimates via server analysis when deployed.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.sourceRow}>
+              <Watch size={18} color={theme.colors.primary} />
+              <View style={styles.sourceCopy}>
+                <Text>Wearables</Text>
+                <Text variant="caption" muted>
+                  Fitbit, Oura, Garmin, WHOOP, and Strava are coming soon.
+                </Text>
+              </View>
+            </View>
           </Card>
 
           <Card style={styles.card}>
@@ -485,5 +528,18 @@ const styles = StyleSheet.create({
   healthCopy: {
     flex: 1,
     gap: 3,
+  },
+  sourceRow: {
+    minHeight: 56,
+    borderRadius: theme.radius.md,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: theme.colors.background,
+  },
+  sourceCopy: {
+    flex: 1,
+    gap: 2,
   },
 });

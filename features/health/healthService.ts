@@ -1,8 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { requestEntryScore } from '@/features/entries/entryService';
+import { clearHealthKitError, noteHealthKitError } from '@/features/dev/diagnosticsStore';
+import { buildProofMetadata } from '@/features/entries/proofPolicy';
 import type { Entry } from '@/features/entries/types';
-import { readAppleHealthSamplesForDate, requestAppleHealthPermissions } from '@/features/health/appleHealthService';
+import {
+  checkAppleHealthStatus,
+  readAppleHealthSamplesForDate,
+  requestAppleHealthPermissions,
+} from '@/features/health/appleHealthService';
 import { getProviderMetadata } from '@/features/health/providerAdapter';
 import { scoreHealthSample, scoreHealthSamples } from '@/features/health/healthScoringService';
 import type {
@@ -50,8 +56,8 @@ const PROVIDER_ORDER: HealthProvider[] = [
   'fitbit',
   'oura',
   'garmin',
-  'strava',
   'whoop',
+  'strava',
 ];
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -259,6 +265,14 @@ export async function createHealthEntriesFromSamples(samples: HealthSample[]) {
       status: 'pending_score',
       occurred_at: sample.endedAt ?? sample.startedAt,
       metadata: {
+        ...buildProofMetadata({
+          proofType: 'health',
+          verificationMethod: 'health',
+          trustLevel: 'verified_health',
+          rankedEligible: true,
+          scoreRequested: true,
+          consumesDailyProof: false,
+        }),
         source: 'health',
         health_provider: sample.provider,
         health_metric_type: sample.metricType,
@@ -277,7 +291,7 @@ export async function createHealthEntriesFromSamples(samples: HealthSample[]) {
   const rows = (data ?? []) as Array<{
     id: string;
     user_id: string;
-    entry_type: Entry['entryType'];
+    entry_type: 'photo' | 'manual' | 'health' | 'location';
     activity_tag: string | null;
     caption: string | null;
     location_name: string | null;
@@ -385,6 +399,7 @@ export async function syncAppleHealthToday(
       entries: entries.length,
       points: summary.totalPoints,
     });
+    clearHealthKitError();
     return {
       samples,
       entriesCreated: entries.length,
@@ -395,6 +410,7 @@ export async function syncAppleHealthToday(
       provider: 'apple_health',
       message: error instanceof Error ? error.message : 'unknown',
     });
+    noteHealthKitError(error);
     throw error;
   }
 }
@@ -414,20 +430,25 @@ export async function getConnectedProviders(userId: string): Promise<HealthProvi
     }
   }
 
+  const appleStatus = await checkAppleHealthStatus().catch(() => null);
+
   return PROVIDER_ORDER.map((provider) => {
     const meta = getProviderMetadata(provider);
     const lastSyncedAt = latestByProvider.get(provider) ?? null;
+    const isAppleHealth = provider === 'apple_health';
     return {
       provider,
       label: meta.label,
-      connected: Boolean(lastSyncedAt),
-      available: provider === 'apple_health',
+      connected: Boolean(lastSyncedAt) || Boolean(isAppleHealth && appleStatus?.connected),
+      available: isAppleHealth ? Boolean(appleStatus?.available) : false,
       comingSoon: meta.comingSoon,
       pro: meta.pro,
       lastSyncedAt,
       supportedMetrics: meta.supportedMetrics,
       message: meta.comingSoon
         ? `${meta.label} connector is queued for the wearable pass.`
+        : isAppleHealth && appleStatus?.requiresDevelopmentBuild
+          ? appleStatus.message
         : lastSyncedAt
           ? 'Connected and syncing private health samples.'
           : 'Ready to connect on an iPhone development build.',

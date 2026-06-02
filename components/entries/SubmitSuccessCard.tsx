@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { CheckCircle2, Clock3, Sparkles, Ticket } from 'lucide-react-native';
+import { CheckCircle2, Clock3, ShieldCheck, Sparkles, Ticket } from 'lucide-react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -10,10 +10,23 @@ import { PointsBadge } from '@/components/entries/PointsBadge';
 import { ShareCTAButton } from '@/components/sharing/ShareCTAButton';
 import { SharePreviewModal } from '@/components/sharing/SharePreviewModal';
 import { buildEntryShareData } from '@/features/sharing/shareDataService';
+import { getEntryProofType, isManualNote } from '@/features/entries/proofPolicy';
+import { isFoodProof } from '@/features/food/foodAnalysisService';
+import { getEntryDisplayScore } from '@/features/scoring/basicScoring';
 import type { EntryWithScore } from '@/features/entries/types';
 import type { ProofWallet } from '@/features/proofs/types';
 import type { ShareCardData } from '@/features/sharing/types';
 import { PILLARS } from '@/lib/constants';
+
+function sourceLabel(entry: EntryWithScore) {
+  if (isManualNote(entry)) return 'Manual Note';
+  if (isFoodProof(entry)) return 'Food Proof';
+  const proofType = getEntryProofType(entry);
+  if (proofType === 'health') return 'Verified by Health';
+  if (proofType === 'location') return 'Location Proof';
+  if (proofType === 'hybrid') return 'Hybrid Proof';
+  return 'Photo Proof';
+}
 
 export function SubmitSuccessCard({
   entry,
@@ -27,6 +40,8 @@ export function SubmitSuccessCard({
   onAddAnother: () => void;
 }) {
   const scored = Boolean(entry.score);
+  const manualNote = isManualNote(entry);
+  const displayScore = getEntryDisplayScore(entry);
   const pillar = entry.score?.wellnessPillar ?? entry.wellnessPillar;
   const [shareData, setShareData] = useState<ShareCardData | null>(null);
   const [shareVisible, setShareVisible] = useState(false);
@@ -39,23 +54,46 @@ export function SubmitSuccessCard({
   return (
     <>
       <Card style={styles.card}>
-        <View style={[styles.icon, scored ? styles.scoredIcon : styles.pendingIcon]}>
-          {scored ? (
+        <View style={[styles.icon, scored || manualNote ? styles.scoredIcon : styles.pendingIcon]}>
+          {scored || manualNote ? (
             <CheckCircle2 size={28} color={theme.colors.success} />
           ) : (
             <Clock3 size={28} color={theme.colors.warning} />
           )}
         </View>
         <View style={styles.copy}>
-          <Text variant="title">{scored ? 'Proof logged' : 'Proof saved'}</Text>
+          <Text variant="title">
+            {manualNote ? 'Manual note saved' : scored ? 'Proof logged' : 'Proof saved'}
+          </Text>
           <Text muted style={styles.centerText}>
-            {scored
+            {manualNote
+              ? 'Timeline context saved. Verified proofs move ranked score.'
+              : scored
               ? entry.score?.aiSubtext ?? 'That one counted. Your day just got louder.'
-              : 'Scoring is warming up. Your entry is safely pending. Proof > promises.'}
+              : 'Basic score is live. Proof Analysis can refine it later. Proof > promises.'}
           </Text>
         </View>
-        <PointsBadge points={entry.score?.points} pending={!scored} />
+        {manualNote ? (
+          <Text variant="caption" style={styles.contextBadge}>
+            Context only
+          </Text>
+        ) : (
+          <PointsBadge
+            points={displayScore.points}
+            pending={displayScore.pending}
+            basic={displayScore.basic}
+          />
+        )}
         <View style={styles.rewardGrid}>
+          <View style={styles.rewardTile}>
+            <ShieldCheck size={17} color={theme.colors.primary} />
+            <Text variant="caption" muted>
+              Source
+            </Text>
+            <Text variant="subtitle" style={styles.rewardValue}>
+              {sourceLabel(entry)}
+            </Text>
+          </View>
           <View style={styles.rewardTile}>
             <Sparkles size={17} color={theme.colors.primary} />
             <Text variant="caption" muted>
@@ -71,31 +109,42 @@ export function SubmitSuccessCard({
               Daily Proof
             </Text>
             <Text variant="subtitle" style={styles.rewardValue}>
-              -1 spent
+              {manualNote ? 'Not spent' : '-1 spent'}
             </Text>
           </View>
           <View style={styles.rewardTile}>
             <Ticket size={17} color={theme.colors.primary} />
             <Text variant="caption" muted>
-              Remaining
+              Confidence
             </Text>
             <Text variant="subtitle" style={styles.rewardValue}>
-              {proofWallet?.setupRequired ? 'Setup' : proofWallet?.remainingProofs ?? '-'}
+              {entry.score?.confidence
+                ? `${Math.round(entry.score.confidence * 100)}%`
+                : displayScore.basic
+                  ? 'Basic'
+                  : '-'}
             </Text>
           </View>
         </View>
+        {!manualNote ? (
+          <Text variant="caption" muted style={styles.centerText}>
+            Daily Proofs left: {proofWallet?.setupRequired ? 'setup needed' : proofWallet?.remainingProofs ?? '-'}
+          </Text>
+        ) : null}
         <Text variant="caption" muted style={styles.centerText}>
-          {scored
+          {manualNote
+            ? 'Manual notes help recap and memory, not ranked score.'
+            : scored
             ? 'Score moved. One proof can move you up.'
-            : 'Score movement posts when the scoring function lands.'}
+            : displayScore.detail}
         </Text>
         <View style={styles.actions}>
-          <ShareCTAButton label="Share this proof" onPress={handleShare} />
+          {!manualNote ? <ShareCTAButton label="Share this proof" onPress={handleShare} /> : null}
           <Button onPress={onViewDay} style={styles.actionButton}>
             View My Day
           </Button>
           <Button variant="secondary" onPress={onAddAnother} style={styles.actionButton}>
-            Later
+            Log another
           </Button>
         </View>
       </Card>
@@ -140,10 +189,12 @@ const styles = StyleSheet.create({
   rewardGrid: {
     width: '100%',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   rewardTile: {
-    flex: 1,
+    flexBasis: '47%',
+    flexGrow: 1,
     minHeight: 92,
     borderRadius: theme.radius.md,
     padding: 10,
@@ -153,6 +204,14 @@ const styles = StyleSheet.create({
   },
   rewardValue: {
     color: theme.colors.primaryDark,
+  },
+  contextBadge: {
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    overflow: 'hidden',
+    color: theme.colors.primaryDark,
+    backgroundColor: theme.colors.primarySoft,
   },
   actionButton: {
     width: '100%',

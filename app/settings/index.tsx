@@ -24,8 +24,15 @@ export default function SettingsScreen() {
   const session = useAuthStore((state) => state.session);
   const profile = useAuthStore((state) => state.profile);
   const authError = useAuthStore((state) => state.error);
+  const lastAuthError = useDiagnosticsStore((state) => state.lastAuthError);
+  const lastProfileError = useDiagnosticsStore((state) => state.lastProfileError);
   const lastEntryInsertError = useDiagnosticsStore((state) => state.lastEntryInsertError);
+  const lastStorageUploadError = useDiagnosticsStore((state) => state.lastStorageUploadError);
   const lastScoringError = useDiagnosticsStore((state) => state.lastScoringError);
+  const lastFoodAnalysisError = useDiagnosticsStore((state) => state.lastFoodAnalysisError);
+  const lastHealthKitError = useDiagnosticsStore((state) => state.lastHealthKitError);
+  const lastVerificationMethod = useDiagnosticsStore((state) => state.lastVerificationMethod);
+  const lastScoringTrust = useDiagnosticsStore((state) => state.lastScoringTrust);
   const refreshProfile = useAuthStore((state) => state.refreshProfile);
   const pro = usePro();
   const [privateMode, setPrivateMode] = useState(Boolean(profile?.isPrivate));
@@ -33,7 +40,7 @@ export default function SettingsScreen() {
   const [proofWallet, setProofWallet] = useState<ProofWallet | null>(null);
 
   useEffect(() => {
-    if (env.appEnv === 'production' || !session?.user.id) {
+    if (env.appEnv !== 'development' || !session?.user.id) {
       setProofWallet(null);
       return;
     }
@@ -149,7 +156,7 @@ export default function SettingsScreen() {
         </Button>
       </Card>
 
-      {env.appEnv !== 'production' ? (
+      {env.appEnv === 'development' ? (
         <Card style={styles.card}>
           <Text variant="subtitle">Dev Diagnostics</Text>
           <View style={styles.diagnosticRow}>
@@ -165,7 +172,9 @@ export default function SettingsScreen() {
               Profile
             </Text>
             <Text variant="caption" style={styles.diagnosticValue}>
-              {profile ? 'loaded' : 'missing'}
+              {profile
+                ? `${profile.id} / ${profile.onboardingComplete ? 'onboarded' : 'not onboarded'}`
+                : 'missing'}
             </Text>
           </View>
           <View style={styles.diagnosticRow}>
@@ -181,7 +190,7 @@ export default function SettingsScreen() {
               Storage
             </Text>
             <Text variant="caption" style={styles.diagnosticValue}>
-              remote buckets verified
+              bucket smoke required
             </Text>
           </View>
           <View style={styles.diagnosticRow}>
@@ -201,7 +210,15 @@ export default function SettingsScreen() {
               Auth error
             </Text>
             <Text variant="caption" style={styles.diagnosticValue}>
-              {authError ?? 'none'}
+              {lastAuthError ?? authError ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Profile error
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {lastProfileError ?? 'none'}
             </Text>
           </View>
           <View style={styles.diagnosticRow}>
@@ -214,10 +231,50 @@ export default function SettingsScreen() {
           </View>
           <View style={styles.diagnosticRow}>
             <Text variant="caption" muted>
+              Storage error
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {lastStorageUploadError ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Verification
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {lastVerificationMethod ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Trust
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {lastScoringTrust ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
               Scoring error
             </Text>
             <Text variant="caption" style={styles.diagnosticValue}>
               {lastScoringError ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              Food analysis
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {lastFoodAnalysisError ?? 'none'}
+            </Text>
+          </View>
+          <View style={styles.diagnosticRow}>
+            <Text variant="caption" muted>
+              HealthKit
+            </Text>
+            <Text variant="caption" style={styles.diagnosticValue}>
+              {lastHealthKitError ?? 'none'}
             </Text>
           </View>
         </Card>

@@ -151,7 +151,7 @@ export default function TimelineDateScreen() {
             </View>
             <Button variant="secondary" onPress={() => router.push(`/digest/${date}`)}>
               <Sparkles size={18} color={theme.colors.primary} />
-              Open TwainGPT Digest
+              Open Daily Recap
             </Button>
             {reelError ? (
               <Text variant="caption" style={styles.reelError}>

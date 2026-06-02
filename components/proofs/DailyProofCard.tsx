@@ -32,7 +32,9 @@ export function DailyProofCard({
         <View style={styles.copy}>
           <Text variant="subtitle">Daily Proofs</Text>
           <Text variant="caption" muted>
-            {wallet?.tier === 'pro' ? 'Pro capacity active' : 'Spend them like they matter'}
+            {wallet?.tier === 'pro'
+              ? 'Pro capacity active'
+              : 'Verified proofs move your score. Spend them wisely'}
           </Text>
         </View>
         <Text variant="metric" style={styles.remaining}>

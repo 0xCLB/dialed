@@ -180,22 +180,37 @@ export default function HealthSettingsScreen() {
               <View style={styles.sourceCopy}>
                 <Text variant="subtitle">Apple Health</Text>
                 <Text muted>
-                  {appleConnection?.lastSyncedAt
+                  {!appleConnection?.available
+                    ? appleConnection?.message ?? 'Apple Health requires an iPhone development build.'
+                    : appleConnection?.lastSyncedAt
                     ? `Last synced ${new Date(appleConnection.lastSyncedAt).toLocaleDateString()}`
                     : 'Connect steps, workouts, sleep, calories, and mindfulness.'}
                 </Text>
               </View>
             </View>
+            {!appleConnection?.available ? (
+              <View style={styles.unavailableBox}>
+                <Text variant="subtitle">Real device required</Text>
+                <Text muted>
+                  Apple Health sync needs an iPhone development build with HealthKit enabled. Simulator and Expo Go can preview this screen but cannot read your steps.
+                </Text>
+              </View>
+            ) : null}
             <View style={styles.buttonRow}>
               <Button
                 variant="secondary"
                 loading={connectingProvider === 'apple_health'}
                 style={styles.rowButton}
+                disabled={!appleConnection?.available}
                 onPress={handleAppleConnect}>
                 <Shield size={17} color={theme.colors.primary} />
                 Connect
               </Button>
-              <Button loading={syncing} style={styles.rowButton} onPress={handleSync}>
+              <Button
+                loading={syncing}
+                disabled={!appleConnection?.available}
+                style={styles.rowButton}
+                onPress={handleSync}>
                 <RefreshCw size={17} color={theme.colors.white} />
                 Sync today
               </Button>
@@ -210,6 +225,15 @@ export default function HealthSettingsScreen() {
           <View style={styles.metrics}>
             <MetricTile label="Health DP" value={summary?.totalPoints ?? 0} detail="local preview" />
             <MetricTile label="Signals" value={summary?.sampleCount ?? 0} detail="today" />
+            <MetricTile
+              label="Steps"
+              value={
+                summary?.samples.find((sample) => sample.metricType === 'steps')?.value
+                  ? String(Math.round(summary.samples.find((sample) => sample.metricType === 'steps')?.value ?? 0))
+                  : '0'
+              }
+              detail="today"
+            />
           </View>
 
           <Card style={styles.card}>
@@ -430,7 +454,14 @@ const styles = StyleSheet.create({
   },
   metrics: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
+  },
+  unavailableBox: {
+    borderRadius: theme.radius.md,
+    padding: 12,
+    gap: 4,
+    backgroundColor: theme.colors.warningSoft,
   },
   sectionHeader: {
     flexDirection: 'row',

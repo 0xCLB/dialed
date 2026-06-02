@@ -65,14 +65,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="check-in"
         options={{
-          title: 'Check-In',
+          title: 'Log Proof',
           tabBarIcon: ({ color }) => <ListPlus size={23} color={color} />,
         }}
       />
       <Tabs.Screen
         name="capture"
         options={{
-          title: 'Capture',
+          title: 'Photo',
           tabBarIcon: ({ focused }) => (
             <View style={[styles.captureButton, focused && styles.captureButtonFocused]}>
               <Camera size={28} color={theme.colors.white} />

@@ -100,18 +100,18 @@ docs/
 ### Sprint 6: Entry Engine
 
 - Native camera capture.
-- Manual check-in quick-picks.
-- Searchable check-in library.
+- Quick Proof starters.
+- Searchable proof/note library.
 - Entry creation.
 - Photo upload.
 - Timeline and My Day views.
 - Entry privacy controls.
 
-### Sprint 7: AI Scoring
+### Sprint 7: Server Proof Analysis
 
 - `score-entry` edge function.
 - Client score request flow.
-- AI points, confidence, tags, rationale, and witty subtext.
+- Rule/model-assisted points, confidence, tags, rationale, and witty subtext.
 - Retry and failure states.
 - Guardrails that prevent direct client writes to official score fields.
 
@@ -150,9 +150,9 @@ docs/
 - Native share sheet.
 - Branded visual templates.
 
-### Sprint 12: Digest And Notifications
+### Sprint 12: Daily Recap And Notifications
 
-- TwainGPT daily digest.
+- Daily Recap.
 - Smart social notification triggers.
 - Push token registration.
 - Notification preferences.
@@ -226,7 +226,7 @@ Auth strategy for development/staging is email/password. Production may add Appl
 1. Client creates an entry draft with user-owned fields.
 2. Client uploads media to a user-scoped storage path when proof exists.
 3. Client links media path to the entry.
-4. Client requests AI scoring through an edge function.
+4. Client requests Proof Analysis through an edge function.
 5. Edge function validates ownership and context.
 6. Edge function writes official score fields.
 7. Client refreshes entry, daily points, streak, and timeline data.
@@ -263,7 +263,7 @@ Auth strategy for development/staging is email/password. Production may add Appl
 - Onboarding
 - Home / My Day
 - Capture
-- Manual check-in
+- Quick Proof / Manual Note
 - Entry detail
 - Daily timeline
 - Profile
@@ -275,7 +275,7 @@ Auth strategy for development/staging is email/password. Production may add Appl
 - Settings
 - Paywall
 - Share preview
-- Digest detail
+- Daily Recap detail
 - Privacy controls
 - Apple Health connection
 
@@ -293,11 +293,11 @@ Auth strategy for development/staging is email/password. Production may add Appl
 - Friends-only entries are visible only to accepted friends.
 - Public entries are readable under intended policies.
 - Users cannot write another user's profile, entries, comments, reactions, health data, subscriptions, or assets.
-- Clients cannot write official AI scoring fields directly.
+- Clients cannot write official scoring fields directly.
 - Entry photo upload uses the correct bucket and user path.
 - Avatar upload uses the correct bucket and user path.
 - Share asset upload and reads follow policy rules.
-- AI scoring failure leaves recoverable entry state.
+- Scoring failure leaves recoverable entry state.
 - Daily points and streaks handle time zones correctly.
 - Leaderboards exclude private or ineligible entries.
 - Comments and reactions respect blocks and privacy.

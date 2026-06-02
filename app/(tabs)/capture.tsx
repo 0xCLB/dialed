@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Image, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, ImagePlus, Send } from 'lucide-react-native';
+import { Camera, ImagePlus, Send, Utensils } from 'lucide-react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -14,6 +14,7 @@ import { theme } from '@/components/ui/theme';
 import { PillarChip } from '@/components/entries/PillarChip';
 import { SubmitSuccessCard } from '@/components/entries/SubmitSuccessCard';
 import { VisibilitySelector } from '@/components/entries/VisibilitySelector';
+import { FoodAnalysisCard } from '@/components/food/FoodAnalysisCard';
 import { DailyProofCard } from '@/components/proofs/DailyProofCard';
 import { EarnMoreProofsCard } from '@/components/proofs/EarnMoreProofsCard';
 import { ProofBalancePill } from '@/components/proofs/ProofBalancePill';
@@ -26,6 +27,8 @@ import type {
   EntryWithScore,
   WellnessPillar,
 } from '@/features/entries/types';
+import { analyzeFoodProof } from '@/features/food/foodAnalysisService';
+import type { FoodAnalysisResult } from '@/features/food/types';
 import { usePro } from '@/features/monetization/usePro';
 import { canSpendProof, getTodayProofWallet } from '@/features/proofs/proofService';
 import type { ProofWallet } from '@/features/proofs/types';
@@ -38,6 +41,8 @@ type ProofAsset = {
   width?: number | null;
   height?: number | null;
 };
+
+type CaptureMode = 'photo' | 'food';
 
 function inferPillar(value: string): WellnessPillar {
   const text = value.toLowerCase();
@@ -64,7 +69,11 @@ function firstAsset(result: ImagePicker.ImagePickerResult): ProofAsset | null {
 
 export default function CaptureScreen() {
   const { session, profile } = useAuth();
+  const params = useLocalSearchParams<{ activity?: string; pillar?: string; mode?: string }>();
   const pro = usePro();
+  const [proofMode, setProofMode] = useState<CaptureMode>(
+    params.mode === 'food' ? 'food' : 'photo',
+  );
   const [asset, setAsset] = useState<ProofAsset | null>(null);
   const [activity, setActivity] = useState('');
   const [caption, setCaption] = useState('');
@@ -77,7 +86,29 @@ export default function CaptureScreen() {
   const [proofModalVisible, setProofModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedEntry, setSubmittedEntry] = useState<EntryWithScore | null>(null);
+  const [foodAnalysis, setFoodAnalysis] = useState<FoodAnalysisResult | null>(null);
   const hasProAccess = Boolean(pro.isPro || profile?.isPro);
+  const modeCopy = proofMode === 'food'
+    ? {
+        title: 'Food Proof',
+        body: 'Estimate macros and Fuel quality from a meal photo. Estimates are not medical advice.',
+        empty: 'Show the meal',
+        activityLabel: 'Food context',
+        activityPlaceholder: 'Chicken bowl, smoothie, protein breakfast',
+        captionPlaceholder: 'Anything useful about portions or ingredients?',
+      }
+    : {
+        title: 'Photo Proof',
+        body: 'Photo proof verifies the action. Verified proofs move your score and ranked leaderboard.',
+        empty: 'Ready when you are',
+        activityLabel: 'Activity',
+        activityPlaceholder: 'Gym, walk, protein, meditation',
+        captionPlaceholder: 'What made it count?',
+      };
+  const currentActivityTag = useMemo(
+    () => (proofMode === 'food' ? activity.trim() || 'food_photo' : activity.trim()),
+    [activity, proofMode],
+  );
 
   const refreshProofWallet = useCallback(async () => {
     if (!session?.user.id) {
@@ -102,10 +133,41 @@ export default function CaptureScreen() {
     refreshProofWallet();
   }, [refreshProofWallet]);
 
+  useEffect(() => {
+    if (params.mode === 'food') {
+      setProofMode('food');
+      setPillar('fuel');
+      if (!activity.trim()) {
+        setActivity('food_photo');
+      }
+    }
+    if (typeof params.activity === 'string' && params.activity.trim() && !activity.trim()) {
+      setActivity(params.activity);
+    }
+    if (
+      typeof params.pillar === 'string' &&
+      PILLAR_ORDER.includes(params.pillar as WellnessPillar)
+    ) {
+      setPillar(params.pillar as WellnessPillar);
+    }
+  }, [activity, params.activity, params.mode, params.pillar]);
+
   function handleActivityChange(value: string) {
     setActivity(value);
-    if (value.trim()) {
+    if (proofMode === 'food') {
+      setPillar('fuel');
+    } else if (value.trim()) {
       setPillar(inferPillar(value));
+    }
+  }
+
+  function changeMode(mode: CaptureMode) {
+    Haptics.selectionAsync();
+    setProofMode(mode);
+    setFoodAnalysis(null);
+    if (mode === 'food') {
+      setPillar('fuel');
+      if (!activity.trim()) setActivity('food_photo');
     }
   }
 
@@ -155,17 +217,26 @@ export default function CaptureScreen() {
       return;
     }
     if (!asset) {
-      Alert.alert('Add proof', 'Take or choose a photo first.');
+      Alert.alert('Add proof', proofMode === 'food' ? 'Take or choose a food photo first.' : 'Take or choose a photo first.');
       return;
     }
-    if (!activity.trim()) {
+    if (!currentActivityTag) {
       Alert.alert('Add an activity', 'Name what this proof shows.');
       return;
     }
 
-    const proofCheck = await canSpendProof(session.user.id, { isPro: hasProAccess });
-    setProofWallet(proofCheck.wallet);
-    setProofModalVisible(true);
+    try {
+      const proofCheck = await canSpendProof(session.user.id, { isPro: hasProAccess });
+      setProofWallet(proofCheck.wallet);
+      setProofModalVisible(true);
+    } catch (proofError) {
+      Alert.alert(
+        'Daily Proof check failed',
+        proofError instanceof Error
+          ? proofError.message
+          : 'Could not verify your Daily Proof balance.',
+      );
+    }
   }
 
   async function handleSubmit() {
@@ -185,12 +256,27 @@ export default function CaptureScreen() {
         base64: asset.base64,
         width: asset.width,
         height: asset.height,
-        activityTag: activity,
+        activityTag: currentActivityTag,
         caption,
-        wellnessPillar: pillar,
+        wellnessPillar: proofMode === 'food' ? 'fuel' : pillar,
         visibility,
+        proofType: 'photo',
+        verificationMethod: 'photo',
+        trustLevel: 'photo_ai',
+        rankedEligible: true,
+        metadata: proofMode === 'food'
+          ? {
+              food_proof: true,
+              proof_subtype: 'food',
+              food_analysis_status: 'pending',
+              macro_estimate_disclaimer: 'Estimated macros only. Not medical advice.',
+            }
+          : undefined,
       });
       setSubmittedEntry(entry);
+      if (proofMode === 'food') {
+        setFoodAnalysis(await analyzeFoodProof(entry));
+      }
       await refreshProofWallet();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
@@ -217,10 +303,11 @@ export default function CaptureScreen() {
 
   function resetForm() {
     setSubmittedEntry(null);
+    setFoodAnalysis(null);
     setAsset(null);
-    setActivity('');
+    setActivity(proofMode === 'food' ? 'food_photo' : '');
     setCaption('');
-    setPillar('movement');
+    setPillar(proofMode === 'food' ? 'fuel' : 'movement');
   }
 
   if (submittedEntry) {
@@ -233,6 +320,7 @@ export default function CaptureScreen() {
           onViewDay={() => router.replace('/(tabs)/home')}
           onAddAnother={resetForm}
         />
+        {proofMode === 'food' ? <FoodAnalysisCard result={foodAnalysis} /> : null}
       </Screen>
     );
   }
@@ -240,10 +328,30 @@ export default function CaptureScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text variant="title">Capture proof</Text>
-        <Text muted>Photo evidence for the thing you actually did.</Text>
+        <Text variant="title">{modeCopy.title}</Text>
+        <Text muted>{modeCopy.body}</Text>
         <ProofBalancePill wallet={proofWallet} loading={proofLoading} />
       </View>
+
+      <Card style={styles.card}>
+        <Text variant="subtitle">Proof mode</Text>
+        <View style={styles.modeRow}>
+          <Button
+            variant={proofMode === 'photo' ? 'primary' : 'secondary'}
+            style={styles.modeButton}
+            onPress={() => changeMode('photo')}>
+            <Camera size={18} color={proofMode === 'photo' ? theme.colors.white : theme.colors.ink} />
+            Photo Proof
+          </Button>
+          <Button
+            variant={proofMode === 'food' ? 'primary' : 'secondary'}
+            style={styles.modeButton}
+            onPress={() => changeMode('food')}>
+            <Utensils size={18} color={proofMode === 'food' ? theme.colors.white : theme.colors.ink} />
+            Food Proof
+          </Button>
+        </View>
+      </Card>
 
       <DailyProofCard
         wallet={proofWallet}
@@ -257,8 +365,12 @@ export default function CaptureScreen() {
           <Image source={{ uri: asset.uri }} style={styles.preview} />
         ) : (
           <View style={styles.emptyPreview}>
-            <Camera size={38} color={theme.colors.primary} />
-            <Text variant="subtitle">Ready when you are</Text>
+            {proofMode === 'food' ? (
+              <Utensils size={38} color={theme.colors.primary} />
+            ) : (
+              <Camera size={38} color={theme.colors.primary} />
+            )}
+            <Text variant="subtitle">{modeCopy.empty}</Text>
           </View>
         )}
         <View style={styles.photoActions}>
@@ -275,8 +387,8 @@ export default function CaptureScreen() {
 
       <Card style={styles.card}>
         <TextInputField
-          label="Activity"
-          placeholder="Gym, walk, protein, meditation"
+          label={modeCopy.activityLabel}
+          placeholder={modeCopy.activityPlaceholder}
           value={activity}
           onChangeText={handleActivityChange}
           autoCapitalize="words"
@@ -284,7 +396,7 @@ export default function CaptureScreen() {
         />
         <TextInputField
           label="Caption"
-          placeholder="What made it count?"
+          placeholder={modeCopy.captionPlaceholder}
           value={caption}
           onChangeText={setCaption}
           multiline
@@ -302,7 +414,7 @@ export default function CaptureScreen() {
               selected={pillar === item}
               onPress={() => {
                 Haptics.selectionAsync();
-                setPillar(item);
+                if (proofMode !== 'food') setPillar(item);
               }}
             />
           ))}
@@ -323,10 +435,10 @@ export default function CaptureScreen() {
 
       <Button
         loading={submitting}
-        disabled={!asset || !activity.trim()}
+        disabled={!asset || !currentActivityTag}
         onPress={handleUseProofPress}>
         <Send size={18} color={theme.colors.white} />
-        Use a Proof
+        {proofMode === 'food' ? 'Use Food Proof' : 'Use a Proof'}
       </Button>
       <ProofSpendModal
         visible={proofModalVisible}
@@ -367,6 +479,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   photoButton: {
+    flex: 1,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modeButton: {
     flex: 1,
   },
   card: {
